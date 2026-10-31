@@ -2,7 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-const BACK = 0.15; // where the unseen body stands relative to the lens, for its reflection
+const BACK = 0.08; // the torso isn't drawn in first person, so the body can sit right under the lens
+const ARM_BONES = /^(left|right)(forearm|hand)/i;
+const LEG_BONES = /^(left|right)(upleg|leg|foot|toebase)/i;
+const LEG_FADE = [0.62, 0.72]; // bind-pose height band (m) where the thighs dissolve
 
 // Keep animations in place: the controller moves the body, not the clip.
 function stripRootMotion(clip) {
@@ -15,7 +18,7 @@ function stripRootMotion(clip) {
   return clip;
 }
 
-// The player's own hazmat-suited body, seen in reflections.
+// The player's own hazmat-suited body: forearms, hands and legs in first person, all of it in reflections.
 export class Body {
   async load(base) {
     const loader = new GLTFLoader();
@@ -30,6 +33,7 @@ export class Body {
         if (o.isSkinnedMesh) this.skinned = o;
       }
     });
+    this.maskFirstPerson();
 
     this.inner = new THREE.Group();
     this.inner.add(model);
@@ -59,15 +63,68 @@ export class Body {
     return this;
   }
 
-  // In first person the body itself stays hidden (the view arms stand in for it);
-  // only the water's reflection shows the whole suit.
-  showOnlyIn(reflector) {
-    this.root.visible = false;
+  // Tag each vertex by how much it follows the forearm/hand bones and the leg bones, and
+  // discard the rest in the shader unless the whole figure is wanted. Arms end in a hard cut
+  // at the elbow (rarely seen); legs dissolve upward from the knee so looking down never
+  // shows a cut edge at the hips.
+  maskFirstPerson() {
+    this.whole = { value: 0 };
+    const mesh = this.skinned;
+    const bones = mesh.skeleton.bones;
+    const arm = bones.map((b) => ARM_BONES.test(b.name));
+    const leg = bones.map((b) => LEG_BONES.test(b.name));
+    const idx = mesh.geometry.attributes.skinIndex, wt = mesh.geometry.attributes.skinWeight;
+    const keep = new Float32Array(idx.count * 2);
+    const comps = ['getX', 'getY', 'getZ', 'getW'];
+    for (let i = 0; i < idx.count; i++) {
+      for (const c of comps) {
+        const b = idx[c](i), w = wt[c](i);
+        if (arm[b]) keep[i * 2] += w;
+        if (leg[b]) keep[i * 2 + 1] += w;
+      }
+    }
+    mesh.geometry.setAttribute('aKeep', new THREE.BufferAttribute(keep, 2));
+    const mat = mesh.material;
+    mat.side = THREE.DoubleSide; // the cut sleeve shows its inside rather than a hole
+    mat.customProgramCacheKey = () => 'first-person-mask';
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWhole = this.whole;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>
+attribute vec2 aKeep;
+varying vec2 vKeep;
+varying float vBindY;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+vKeep = aKeep;
+vBindY = position.y;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+varying vec2 vKeep;
+varying float vBindY;
+uniform float uWhole;`)
+        .replace('void main() {', `void main() {
+  if (uWhole < 0.5) {
+    bool isArm = vKeep.x > 0.5, isLeg = vKeep.y > 0.5;
+    if (!isArm && !isLeg) discard;
+    if (isLeg && !isArm) {
+      float fade = smoothstep(${LEG_FADE[0].toFixed(2)}, ${LEG_FADE[1].toFixed(2)}, vBindY);
+      float dither = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
+      if (fade > dither) discard;
+    }
+  }`)
+        // seen through a cut, the inside reads as solid suit rather than a hollow tube
+        .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+  if (!gl_FrontFacing) gl_FragColor.rgb = diffuseColor.rgb * 0.55;`);
+    };
+  }
+
+  // The water's reflection shows the whole person.
+  showWholeIn(reflector) {
     const orig = reflector.onBeforeRender;
     reflector.onBeforeRender = (...args) => {
-      this.root.visible = true;
+      this.whole.value = 1;
       orig.apply(reflector, args);
-      this.root.visible = false;
+      this.whole.value = 0;
     };
   }
 

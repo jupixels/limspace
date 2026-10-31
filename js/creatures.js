@@ -185,3 +185,126 @@ export function createSwimmer() {
     },
   };
 }
+
+// The Occupant: a very tall, thin figure in hotel staff clothes with a head cocked too far.
+// Feet at the origin, facing +Z.
+export function createOccupant() {
+  const suit = new THREE.MeshStandardMaterial({ color: 0x17181c, roughness: 0.7 });
+  const shirt = new THREE.MeshStandardMaterial({ color: 0xbdb8aa, roughness: 0.8 });
+  const tie = new THREE.MeshStandardMaterial({ color: 0x4a0f12, roughness: 0.6 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xd6d2c8, roughness: 0.45, emissive: 0x16140f });
+  const hollow = new THREE.MeshBasicMaterial({ color: 0x020202 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x0c0b0a, roughness: 0.5 });
+
+  const add = (geo, mat, parent, pos = [0, 0, 0], rot = [0, 0, 0], scale = [1, 1, 1]) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(...pos);
+    m.rotation.set(...rot);
+    m.scale.set(...scale);
+    parent.add(m);
+    return m;
+  };
+  const pivot = (parent, pos) => {
+    const g = new THREE.Group();
+    g.position.set(...pos);
+    parent.add(g);
+    return g;
+  };
+  // a segment hanging down (-Y) from its pivot
+  const hang = (parent, len, r, mat) => add(new THREE.CapsuleGeometry(r, len, 4, 8), mat, parent, [0, -len / 2, 0]);
+
+  const root = new THREE.Group();
+  const body = pivot(root, [0, 0, 0]);
+
+  // legs, too long, trouser-dark, with shoes
+  for (const s of [-1, 1]) {
+    const hip = pivot(body, [s * 0.09, 1.25, 0]);
+    hang(hip, 0.6, 0.06, suit);
+    const knee = pivot(hip, [0, -0.62, 0]);
+    hang(knee, 0.58, 0.05, suit);
+    add(new THREE.BoxGeometry(0.1, 0.06, 0.26), suit, knee, [0, -0.63, 0.05]);
+  }
+  // torso: narrow jacket over a shirt and tie, slightly hunched
+  const chest = pivot(body, [0, 1.3, 0]);
+  chest.rotation.x = 0.12;
+  add(new THREE.CapsuleGeometry(0.17, 0.62, 6, 10), suit, chest, [0, 0.38, 0], [0, 0, 0], [1, 1, 0.6]);
+  add(new THREE.BoxGeometry(0.1, 0.52, 0.02), shirt, chest, [0, 0.44, 0.1]);
+  add(new THREE.BoxGeometry(0.035, 0.4, 0.015), tie, chest, [0, 0.42, 0.115]);
+  // arms hang past the knees and end in long pale fingers
+  const arms = [-1, 1].map((s) => {
+    const shoulder = pivot(chest, [s * 0.21, 0.72, 0]);
+    hang(shoulder, 0.58, 0.045, suit);
+    const elbow = pivot(shoulder, [0, -0.6, 0]);
+    hang(elbow, 0.56, 0.038, suit);
+    const wrist = pivot(elbow, [0, -0.6, 0]);
+    add(new THREE.BoxGeometry(0.02, 0.11, 0.07), skin, wrist, [0, -0.05, 0]);
+    for (let f = 0; f < 4; f++) {
+      const k = pivot(wrist, [0, -0.1, (f - 1.5) * 0.017]);
+      hang(k, 0.15 + (f === 1 || f === 2 ? 0.04 : 0), 0.007, skin);
+      k.rotation.x = (f - 1.5) * 0.05;
+    }
+    shoulder.rotation.z = s * 0.08;
+    return { s, shoulder, elbow, wrist };
+  });
+  // a long neck and a head cocked over to one side
+  const neck = pivot(chest, [0, 0.78, 0.02]);
+  add(new THREE.CapsuleGeometry(0.045, 0.3, 4, 8), skin, neck, [0, 0.15, 0]);
+  const head = pivot(neck, [0, 0.38, 0]);
+  add(new THREE.SphereGeometry(0.11, 14, 10), skin, head, [0, 0.03, 0], [0, 0, 0], [0.85, 1.3, 0.92]);
+  add(new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat, head, [0, 0.06, -0.01], [-0.25, 0, 0], [0.88, 1.3, 0.96]);
+  const glintMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 4, 3.6), fog: false });
+  const glints = [];
+  for (const s of [-1, 1]) {
+    add(new THREE.SphereGeometry(0.03, 8, 6), hollow, head, [s * 0.038, 0.05, 0.085], [0, 0, 0], [1, 1.25, 0.6]);
+    const g = add(new THREE.SphereGeometry(0.009, 6, 4), glintMat, head, [s * 0.038, 0.05, 0.105]);
+    g.visible = false;
+    glints.push(g);
+  }
+  // the smile: a thin dark crescent far too wide for the face
+  const smile = add(new THREE.TorusGeometry(0.06, 0.007, 4, 24, Math.PI), hollow, head, [0, -0.045, 0.09], [0, 0, Math.PI], [1.25, 0.6, 1]);
+  const maw = add(new THREE.SphereGeometry(0.05, 10, 8), hollow, head, [0, -0.06, 0.085], [0, 0, 0], [1.3, 0.15, 0.4]);
+
+  const calm = skin.emissive.clone(), lit = new THREE.Color(0x5c5850);
+  let look = 0, scare = 0, twitch = null;
+  const tilt = 0.42;
+  const tmp = new THREE.Vector3();
+
+  return {
+    root,
+    head,
+    twitch() {
+      twitch = { part: Math.random() < 0.5 ? head : arms[Math.random() < 0.5 ? 0 : 1].wrist, t: 0.15, amt: (Math.random() - 0.5) * 1.2 };
+    },
+    setScare(v) {
+      scare = v;
+      head.scale.setScalar(1 + 0.3 * v);
+      glints.forEach((g) => { g.visible = v > 0.5; });
+      skin.emissive.copy(calm).lerp(lit, v);
+      smile.scale.set(1.25 + 0.6 * v, 0.6 + 0.3 * v, 1);
+      maw.scale.set(1.3 + 0.4 * v, 0.15 + 1.6 * v, 0.4);
+    },
+    // the body stays utterly still; only the head follows you
+    update(dt, t, target, lookWeight) {
+      look += (lookWeight - look) * (1 - Math.exp(-dt * 1.5));
+      let yaw = 0, pitch = 0;
+      if (target && look > 0.001) {
+        root.updateMatrixWorld(true);
+        tmp.copy(target);
+        neck.worldToLocal(tmp);
+        tmp.sub(head.position);
+        yaw = THREE.MathUtils.clamp(Math.atan2(tmp.x, tmp.z), -1.4, 1.4);
+        pitch = THREE.MathUtils.clamp(-Math.atan2(tmp.y, Math.hypot(tmp.x, tmp.z)), -0.6, 0.8);
+      }
+      head.rotation.set(pitch * look, yaw * look, tilt * (1 - scare * 0.7), 'YXZ');
+      for (const a of arms) {
+        a.elbow.rotation.set(-0.05 - 0.9 * scare, 0, 0);
+        a.shoulder.rotation.set(-1.2 * scare, 0, a.s * (0.08 + 0.3 * scare));
+      }
+      if (twitch) {
+        twitch.t -= dt;
+        twitch.part.rotation.z += twitch.amt * Math.max(0, twitch.t / 0.15);
+        if (twitch.t <= 0) twitch = null;
+      }
+    },
+  };
+}

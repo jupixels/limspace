@@ -111,3 +111,13 @@ button:disabled { opacity: 0.4; cursor: wait; }
   95% { transform: translateX(3px) skewX(4deg); }
   97% { transform: none; opacity: 0.6; }
 }
+
+button.link {
+  border: none;
+  font-size: 20px;
+  opacity: 0.6;
+  margin-top: 18px;
+  padding: 4px 8px;
+}
+
+button.link:hover { opacity: 1; background: transparent; color: #9fffe0; }

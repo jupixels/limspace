@@ -11,10 +11,22 @@ import { Body } from './body.js';
 import { AudioSys } from './audio.js';
 import { CamcorderShader, OSD } from './camcorder.js';
 import { Director } from './events.js';
+import { buildHotel } from './hotel.js';
+import { Director2 } from './events2.js';
+
+// each tape is its own page: ?tape=2 loads Tape 02
+const TAPE = new URLSearchParams(location.search).get('tape') === '2' ? 2 : 1;
+const TAPES = {
+  1: { title: 'TAPE 01 &mdash; UNLABELED', build: buildWorld, director: Director },
+  2: { title: 'TAPE 02 &mdash; VACANCY', build: buildHotel, director: Director2 },
+};
 
 // Camcorder sensors were low-res; rendering below native keeps it soft (and fast).
 const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
-const REVERB = { hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2] };
+const REVERB = {
+  hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2],
+  corridor2: [0.05, 0.3], room: [0, 0.2],
+};
 const AIR_FOG = { color: new THREE.Color(0x0c1514), density: 0.016 };
 const WATER_FOG = { color: new THREE.Color(0x0a3236), density: 0.2 };
 const DEATH = { hold: 2.1, staticAt: 1.05 }; // seconds from the catch to the hard cut, then the rewind
@@ -32,12 +44,12 @@ scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(AIR_FOG.color.clone(), AIR_FOG.density);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 200);
 
-const world = buildWorld(scene);
+const world = TAPES[TAPE].build(scene);
 const player = new Player(camera, world);
 const audio = new AudioSys();
 const osd = new OSD();
 const fx = { glitch: 0, tension: 0.1, nv: 0, nvOn: false, usedNv: false, battery: 100, exposure: 1, fade: 1, under: 0 };
-const director = new Director({ world, audio, player, fx, camera });
+const director = new TAPES[TAPE].director({ world, audio, player, fx, camera });
 let body = null;
 
 const composer = new EffectComposer(renderer);
@@ -48,11 +60,12 @@ gtao.blendIntensity = 0.85;
 // the water's reflection camera must not run again inside the AO depth/normal pass
 const gtaoRender = gtao.render.bind(gtao);
 gtao.render = (...args) => {
-  const v = world.water.visible;
-  world.water.visible = false;
+  const water = world.water ?? {};
+  const v = water.visible;
+  water.visible = false;
   if (body) body.root.visible = false; // its hidden parts would still cast AO
   gtaoRender(...args);
-  world.water.visible = v;
+  water.visible = v;
   if (body) body.root.visible = true;
 };
 composer.addPass(gtao);
@@ -86,7 +99,7 @@ const prepared = (async () => {
   try {
     body = await new Body().load('models');
     scene.add(body.root);
-    body.showWholeIn(world.water);
+    if (world.water) body.showWholeIn(world.water);
   } catch (err) {
     console.warn('body model unavailable', err);
   }
@@ -165,7 +178,19 @@ $('play').addEventListener('click', async (e) => {
 $('pause').addEventListener('click', lock);
 $('pausePanel').addEventListener('click', (e) => e.stopPropagation());
 $('resume').addEventListener('click', lock);
-$('again').addEventListener('click', () => location.reload());
+$('again').addEventListener('click', () => {
+  // Tape 01 leads into Tape 02; Tape 02 rewinds itself
+  if (TAPE === 1) location.search = '?tape=2';
+  else location.reload();
+});
+$('back').addEventListener('click', () => { location.search = TAPE === 1 ? '' : '?tape=1'; });
+$('tapeTitle').innerHTML = TAPES[TAPE].title;
+if (TAPE === 2) {
+  $('endTitle').textContent = 'END OF TAPE 02';
+  $('endSub').innerHTML = 'TAPE 03 &mdash; NOT YET RECOVERED';
+  $('again').innerHTML = '&#9664;&#9664; REWIND TAPE';
+  $('back').innerHTML = '&#9664;&#9664; BACK TO TAPE 01';
+}
 
 document.addEventListener('pointerlockchange', () => {
   player.locked = document.pointerLockElement === renderer.domElement;
@@ -194,10 +219,15 @@ function startAmbience() {
   audio.play('rec_start', { gain: 0.9, send: 0 });
   loops.hiss = audio.loop('tape_hiss', { gain: 0.05, send: 0 });
   loops.drone = audio.loop('dread_drone', { gain: 0, send: 0.3 });
-  loops.pool1 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: -8 }, gain: 1.0, send: 0.6, ref: 5 });
-  loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
-  loops.under = audio.loop('underwater', { gain: 0, send: 0 });
-  loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
+  if (TAPE === 1) {
+    loops.pool1 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: -8 }, gain: 1.0, send: 0.6, ref: 5 });
+    loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
+    loops.under = audio.loop('underwater', { gain: 0, send: 0 });
+    loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
+  } else {
+    loops.room = audio.loop('hotel_ambience', { gain: 0.5, send: 0 });
+    loops.whine = audio.loop('stare_whine', { gain: 0, send: 0 });
+  }
   loops.heart = audio.loop('heartbeat', { gain: 0, send: 0 });
   for (const l of world.lights) {
     l.hum = audio.loop('fluorescent_hum', { pos: l.pos, gain: 0.22, send: 0.15, ref: 1.5, rolloff: 1.6, rate: 0.97 + Math.random() * 0.06 });
@@ -227,6 +257,7 @@ function footstep() {
   const k = (player.running ? 1.5 : 1) * (crouch ? 0.4 : 1);
   const rate = 0.9 + Math.random() * 0.2;
   if (player.wading) audio.play(pick('wade_1', 'wade_2'), { pos: feet(), gain: 0.55 * k, send: 0.6, ref: 1.5, rate });
+  else if (zone === 'corridor2' || zone === 'room') audio.play(pick('carpet_1', 'carpet_2'), { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
   else if (zone === 'flooded' || zone === 'end') audio.play(pick('puddle_1', 'puddle_2', 'puddle_3'), { pos: feet(), gain: 0.7 * k, send: 0.55, ref: 1.5, rate });
   else audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.55 * k, send: 0.7, ref: 1.5, rate });
 }
@@ -247,7 +278,7 @@ director.onCatch = () => {
   player.frozen = true;
   fx.glitch = 0.7;
   fx.tension = 1;
-  audio.play('shriek', { gain: 2.2, send: 0.15 });
+  audio.play(director.catchSound ?? 'shriek', { gain: 2.2, send: 0.15 });
   audio.play('catch', { gain: 1.2, send: 0.4 });
 };
 
@@ -348,6 +379,7 @@ function tick(dt) {
     if (player.update(dt, gameT)) footstep();
     playerEvents();
     director.update(dt);
+    if (director.wrapped) resetHistory(); // the loop moved you; rewind from here
     recordHistory(dt);
     playMarker = Math.max(0, playMarker - dt);
     if (fx.nvOn) {
@@ -364,7 +396,7 @@ function tick(dt) {
 
   const underwater = camera.position.y < WATER_Y && world.inPool(camera.position.x, camera.position.z);
   fx.under = underwater ? 1 : 0;
-  world.update(dt, realT, underwater);
+  world.update(dt, realT, underwater, camera.position);
   const fog = underwater ? WATER_FOG : AIR_FOG;
   scene.fog.color.copy(fog.color);
   scene.fog.density = fog.density;
@@ -387,7 +419,11 @@ function tick(dt) {
     set(loops.under, underwater ? 0.9 : 0, 0.08);
     set(loops.wade, player.wading && !underwater ? Math.min(player.speed / 1.05, 1) * 0.5 : 0, 0.15);
     set(loops.heart, state === 'playing' ? director.heartbeat * 0.8 : 0, 0.4);
-    for (const l of world.lights) set(l.hum, l.on ? 0.22 : 0, 0.01);
+    for (const l of world.lights) {
+      set(l.hum, l.on ? 0.22 : 0, 0.01);
+      if (l.moving && l.hum?.panner) audio.setPos(l.hum.panner, l.pos);
+    }
+    set(loops.whine, state === 'playing' ? (director.whine ?? 0) * 0.9 : 0, 0.15);
   }
 
   U.time.value = realT;

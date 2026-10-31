@@ -23,6 +23,12 @@ Headphones recommended.
 
 The hall's only exit is shuttered. Something on the bottom of the pool opens it, and taking it wakes what lives in the water. It only moves while you aren't watching it. If it reaches you, the tape rewinds.
 
+## Tape 02: Vacancy
+
+https://jupixels.github.io/limspace/?tape=2 (or finish Tape 01)
+
+A hotel corridor that doesn't end. Something tall is standing in it. Don't look at it for long; every time you look away, it comes closer. Keep walking. One of the rooms will open.
+
 ## Running locally
 
 It is a static site with no build step. Serve the folder over HTTP (ES modules don't load from `file://`):
@@ -41,9 +47,12 @@ Then open http://localhost:8123.
 - `js/body.js`: the player's visible hazmat-suited body and its animations
 - `js/camcorder.js`: VHS/camcorder shader and viewfinder overlay
 - `js/audio.js`: positional audio, reverb zones
-- `js/events.js`: the director: tape pickup, the Swimmer, scripted and random scares
+- `js/events.js`: Tape 01 director: tape pickup, the Swimmer, scripted and random scares
+- `js/hotel.js`: Tape 02 level: the looping corridor, room 215, lights that follow you
+- `js/events2.js`: Tape 02 director: laps, the Occupant's stare meter and steps, the exit
+- `js/creatures.js`: the Swimmer and the Occupant, built from primitives and posed in code
 - `audio/`: sound effects generated with ElevenLabs
 - `models/`: hazmat character generated and rigged with Meshy
-- `textures/`: CC0 tile textures from [ambientCG](https://ambientcg.com) (Tiles107, Tiles132A, Tiles133A, Tiles133B)
+- `textures/`: CC0 textures from [ambientCG](https://ambientcg.com) (Tiles107, Tiles132A, Tiles133A, Tiles133B, Carpet008, Wallpaper002A, OfficeCeiling001)
 
 Built with [three.js](https://threejs.org/).

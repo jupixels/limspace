@@ -21,7 +21,7 @@
   <div id="title" class="overlay">
     <div class="panel">
       <h1>LIMSPACE</h1>
-      <p class="sub">TAPE 01 &mdash; UNLABELED</p>
+      <p class="sub" id="tapeTitle">TAPE 01 &mdash; UNLABELED</p>
       <button id="play">&#9654; PLAY TAPE</button>
       <p id="status" class="hint">headphones recommended</p>
       <ul class="controls">
@@ -49,9 +49,10 @@
   </div>
   <div id="end" class="overlay hidden">
     <div class="panel">
-      <h2>END OF TAPE 01</h2>
-      <p class="sub">TAPE 02 &mdash; NOT YET RECOVERED</p>
-      <button id="again">&#9664;&#9664; REWIND TAPE</button>
+      <h2 id="endTitle">END OF TAPE 01</h2>
+      <p class="sub" id="endSub">A SECOND TAPE WAS FOUND IN THE WATER</p>
+      <button id="again">&#9654; INSERT TAPE 02</button>
+      <p><button id="back" class="link">&#9664;&#9664; REWIND TAPE 01</button></p>
     </div>
   </div>
   <script type="module" src="js/main.js"></script>

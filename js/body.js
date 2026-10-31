@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
+const STILL_AT = 0.25; // fraction through the walk cycle used as the standing pose
 const BACK = 0.26; // lens sits ahead of the body so the cut ends of the arms and legs face away from it
 const ARM_BONES = /^(left|right)(forearm|hand)/i;
 const LEG_BONES = /^(left|right)(upleg|leg|foot|toebase)/i;
@@ -22,8 +23,8 @@ function stripRootMotion(clip) {
 export class Body {
   async load(base) {
     const loader = new GLTFLoader();
-    const [rig, walk, run, idle] = await Promise.all(
-      ['hazmat', 'hazmat_walk', 'hazmat_run', 'hazmat_idle'].map((n) => loader.loadAsync(`${base}/${n}.glb`)));
+    const [rig, walk, run] = await Promise.all(
+      ['hazmat', 'hazmat_walk', 'hazmat_run'].map((n) => loader.loadAsync(`${base}/${n}.glb`)));
 
     const model = this.model = rig.scene;
     model.traverse((o) => {
@@ -49,7 +50,13 @@ export class Body {
     };
     this.walk = act(walk);
     this.run = act(run);
-    this.idle = act(idle);
+    // standing still holds one frame of the walk (feet passing) instead of a fidgety idle
+    const still = walk.animations[0].clone();
+    still.name = 'still';
+    this.idle = this.mixer.clipAction(still);
+    this.idle.play();
+    this.idle.time = still.duration * STILL_AT;
+    this.idle.paused = true;
     this.idle.setEffectiveWeight(1);
 
     // size from the posed skeleton (the bind-pose mesh bounds are unreliable): head bone to toes

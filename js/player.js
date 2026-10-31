@@ -42,7 +42,7 @@ export class Player {
       if (!this.locked) return;
       const s = 0.0021 / this.zoom;
       this.tYaw -= e.movementX * s;
-      this.tPitch = THREE.MathUtils.clamp(this.tPitch - e.movementY * s, -1.45, 1.35);
+      this.tPitch = THREE.MathUtils.clamp(this.tPitch - e.movementY * s, -0.95, 1.35); // can't look straight down
     });
     addEventListener('wheel', (e) => {
       if (!this.locked) return;

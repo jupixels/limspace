@@ -5,9 +5,11 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Pass } from 'three/addons/postprocessing/Pass.js';
 import { buildWorld, WATER_Y } from './world.js';
 import { Player } from './player.js';
 import { Body } from './body.js';
+import { ViewArms } from './viewmodel.js';
 import { AudioSys } from './audio.js';
 import { CamcorderShader, OSD } from './camcorder.js';
 import { Director } from './events.js';
@@ -36,6 +38,7 @@ const osd = new OSD();
 const fx = { glitch: 0, tension: 0.1, nv: 0, nvOn: false, usedNv: false, battery: 100, exposure: 1, fade: 1, under: 0 };
 const director = new Director({ world, audio, player, fx, camera });
 let body = null;
+let arms = null;
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -47,12 +50,29 @@ const gtaoRender = gtao.render.bind(gtao);
 gtao.render = (...args) => {
   const v = world.water.visible;
   world.water.visible = false;
-  if (body) body.root.visible = false; // its hidden parts would still cast AO
   gtaoRender(...args);
   world.water.visible = v;
-  if (body) body.root.visible = true;
 };
 composer.addPass(gtao);
+// View arms draw over the finished world image with fresh depth, so they never sink into walls.
+class OverlayPass extends Pass {
+  constructor() {
+    super();
+    this.needsSwap = false;
+    this.enabled = false;
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const autoClear = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(readBuffer);
+    renderer.clearDepth();
+    renderer.render(this.scene, this.camera);
+    renderer.autoClear = autoClear;
+  }
+}
+const armsPass = new OverlayPass();
+composer.addPass(armsPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.6, 0.85);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -79,7 +99,10 @@ const prepared = (async () => {
   try {
     body = await new Body().load('models');
     scene.add(body.root);
-    body.showWholeIn(world.water);
+    body.showOnlyIn(world.water);
+    arms = new ViewArms(body.skinned);
+    armsPass.scene = arms.scene;
+    armsPass.camera = arms.camera;
   } catch (err) {
     console.warn('body model unavailable', err);
   }
@@ -234,6 +257,7 @@ function tick(dt) {
     player.update(dt, realT);
   }
   if (body) body.update(state === 'playing' ? dt : 0, player);
+  armsPass.enabled = !!arms && state !== 'title' && state !== 'loading';
 
   const underwater = camera.position.y < WATER_Y && world.inPool(camera.position.x, camera.position.z);
   fx.under = underwater ? 1 : 0;
@@ -246,6 +270,8 @@ function tick(dt) {
   fx.nv += ((fx.nvOn ? 1 : 0) - fx.nv) * (1 - Math.exp(-dt * 12));
   const target = THREE.MathUtils.clamp(Math.pow(0.9 / sceneLight(), 0.55), 0.5, 2.2);
   fx.exposure += (target - fx.exposure) * (1 - Math.exp(-dt * 0.8));
+  // the arms have their own lights, so feed them how lit this spot is
+  if (arms) arms.update(state === 'playing' ? dt : 0, player, THREE.MathUtils.clamp(sceneLight() / 0.9, 0.04, 1.6));
   renderer.toneMappingExposure = fx.exposure * (1 + fx.nv * 0.8);
 
   if (audio.ctx && state !== 'loading') {
@@ -300,6 +326,7 @@ addEventListener('resize', () => {
   composer.setSize(innerWidth, innerHeight);
   setResolution();
   osd.resize(camera.aspect);
+  arms?.resize(camera.aspect);
 });
 
-window.game = { world, player, fx, audio, director, renderer, camera, scene, composer, osd, tick, quality, get body() { return body; } };
+window.game = { world, player, fx, audio, director, renderer, camera, scene, composer, osd, tick, quality, get body() { return body; }, get arms() { return arms; } };

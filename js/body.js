@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-const BACK = 0.08; // only the arms are drawn in first person, so the body can sit right under the lens
-const ARM_BONES = /^(left|right)(forearm|hand)/i;
+const BACK = 0.15; // where the unseen body stands relative to the lens, for its reflection
 
 // Keep animations in place: the controller moves the body, not the clip.
 function stripRootMotion(clip) {
@@ -16,7 +15,7 @@ function stripRootMotion(clip) {
   return clip;
 }
 
-// The player's own hazmat-suited body: hands and forearms in first person, all of it in reflections.
+// The player's own hazmat-suited body, seen in reflections.
 export class Body {
   async load(base) {
     const loader = new GLTFLoader();
@@ -31,7 +30,6 @@ export class Body {
         if (o.isSkinnedMesh) this.skinned = o;
       }
     });
-    this.maskToArms();
 
     this.inner = new THREE.Group();
     this.inner.add(model);
@@ -61,41 +59,15 @@ export class Body {
     return this;
   }
 
-  // Tag each vertex by how much it follows the forearm/hand bones, and discard the rest
-  // in the shader unless the whole figure is wanted.
-  maskToArms() {
-    this.whole = { value: 0 };
-    const mesh = this.skinned;
-    const bones = mesh.skeleton.bones;
-    const arm = bones.map((b) => ARM_BONES.test(b.name));
-    const idx = mesh.geometry.attributes.skinIndex, wt = mesh.geometry.attributes.skinWeight;
-    const keep = new Float32Array(idx.count);
-    const comps = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < idx.count; i++) {
-      for (const c of comps) if (arm[idx[c](i)]) keep[i] += wt[c](i);
-    }
-    mesh.geometry.setAttribute('aKeep', new THREE.BufferAttribute(keep, 1));
-    const mat = mesh.material;
-    mat.side = THREE.DoubleSide; // the cut sleeve shows its inside rather than a hole
-    mat.customProgramCacheKey = () => 'arms-mask';
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uWhole = this.whole;
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aKeep;\nvarying float vKeep;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKeep = aKeep;');
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vKeep;\nuniform float uWhole;')
-        .replace('void main() {', 'void main() {\n  if (uWhole < 0.5 && vKeep < 0.5) discard;');
-    };
-  }
-
-  // The water's reflection shows the whole person.
-  showWholeIn(reflector) {
+  // In first person the body itself stays hidden (the view arms stand in for it);
+  // only the water's reflection shows the whole suit.
+  showOnlyIn(reflector) {
+    this.root.visible = false;
     const orig = reflector.onBeforeRender;
     reflector.onBeforeRender = (...args) => {
-      this.whole.value = 1;
+      this.root.visible = true;
       orig.apply(reflector, args);
-      this.whole.value = 0;
+      this.root.visible = false;
     };
   }
 

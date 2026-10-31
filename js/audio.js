@@ -2,7 +2,7 @@ const FILES = [
   'pool_ambience', 'fluorescent_hum', 'tape_hiss', 'rec_start', 'drip',
   'distant_door', 'underwater_presence', 'dread_drone', 'light_flicker', 'glitch',
   'boot_1', 'boot_2', 'puddle_1', 'puddle_2', 'puddle_3', 'wade_1', 'wade_2', 'wade_loop',
-  'splash_in', 'underwater', 'climb_out', 'breath_calm', 'breath_heavy', 'land',
+  'splash_in', 'underwater', 'climb_out', 'land',
 ];
 
 export class AudioSys {
@@ -127,7 +127,7 @@ export class AudioSys {
   // Glide a parameter toward a value. Only schedules when the target really changes, and clears
   // what was queued before, so per-frame calls don't pile up events on the audio thread.
   ramp(param, value, tc) {
-    if (param._target !== undefined && Math.abs(param._target - value) < Math.max(0.01, 0.004 * Math.abs(value))) return;
+    if (param._target !== undefined && Math.abs(param._target - value) < Math.max(0.002, 0.004 * Math.abs(value))) return;
     const t = this.ctx.currentTime;
     param.cancelScheduledValues(t);
     param.setTargetAtTime(value, t, tc);

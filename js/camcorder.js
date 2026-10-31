@@ -49,13 +49,13 @@ export const CamcorderShader = {
       float unrest = tension + glitch + paused * 0.6;
 
       // tape warble and per-line jitter
-      uv.x += sin(uv.y * 9.0 + time * 1.7) * 0.0012 * (1.0 + unrest * 3.0);
-      uv.x += (hash(vec2(line, frame)) - 0.5) * 0.0011 * (1.0 + unrest * 4.0);
+      uv.x += sin(uv.y * 9.0 + time * 1.7) * 0.0006 * (1.0 + unrest * 4.0);
+      uv.x += (hash(vec2(line, frame)) - 0.5) * 0.0005 * (1.0 + unrest * 6.0);
 
       // tracking band rolling up the frame
       float bandY = fract(-time * 0.08);
       float band = 1.0 - smoothstep(0.0, 0.03 + unrest * 0.03, abs(uv.y - bandY));
-      band *= 0.25 + unrest * 1.2;
+      band *= 0.08 + unrest * 1.2;
       uv.x += band * (hash(vec2(line, frame + 3.0)) - 0.5) * 0.03;
 
       // block displacement on glitches
@@ -65,7 +65,7 @@ export const CamcorderShader = {
       if (paused > 0.5) uv.y += (hash(vec2(frame, 1.0)) - 0.5) * 0.004;
       uv += underwater * vec2(sin(uv.y * 18.0 + time * 2.1), cos(uv.x * 14.0 + time * 1.7)) * 0.005;
 
-      vec2 duv = barrel(uv, 0.22);
+      vec2 duv = barrel(uv, 0.14);
       vec2 dir = duv - 0.5;
       float r = length(dir);
 
@@ -76,14 +76,14 @@ export const CamcorderShader = {
         + rgb2yiq(texture2D(tDiffuse, duv + vec2(px, 0.0)).rgb) * 0.25;
       vec2 chroma = vec2(0.0);
       for (int i = 0; i < 6; i++) {
-        vec2 o = vec2(float(i) * 2.5 * px + 3.0 * px, 0.0);
+        vec2 o = vec2(float(i) * 1.5 * px + 1.5 * px, 0.0);
         chroma += rgb2yiq(texture2D(tDiffuse, duv - o).rgb).yz;
       }
-      yiq.yz = chroma / 6.0 * 0.85;
+      yiq.yz = chroma / 6.0 * 0.95;
       vec3 col = yiq2rgb(yiq);
 
       // radial chromatic aberration
-      float ca = 0.002 + r * 0.007 + glitch * 0.012;
+      float ca = 0.001 + r * 0.004 + glitch * 0.012;
       col.r = mix(col.r, texture2D(tDiffuse, duv + dir * ca).r, 0.7);
       col.b = mix(col.b, texture2D(tDiffuse, duv - dir * ca).b, 0.7);
 
@@ -96,8 +96,8 @@ export const CamcorderShader = {
       col = mix(col, nvCol, nv);
 
       // grade: lifted blacks, faint green-cyan cast, gentle S-curve
-      col = col * vec3(0.96, 1.0, 0.97) + vec3(0.018, 0.022, 0.02);
-      col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
+      col = col * vec3(0.97, 1.0, 0.98) + vec3(0.01, 0.013, 0.012);
+      col = mix(col, col * col * (3.0 - 2.0 * col), 0.25);
 
       // sensor/tape grain, heavier in the dark and in night vision
       float n = hash(vUv * resolution + fract(time * 7.3) * 91.0) - 0.5;
@@ -106,15 +106,15 @@ export const CamcorderShader = {
       col += band * (hash(vec2(vUv.x * 300.0, frame)) - 0.5) * 0.25;
 
       // tape dropouts: brief white streaks
-      float drop = step(0.999 - glitch * 0.02 - tension * 0.003, hash(vec2(line, frame)));
+      float drop = step(0.9995 - glitch * 0.02 - tension * 0.003, hash(vec2(line, frame)));
       drop *= step(hash(vec2(floor(vUv.x * 24.0), line + frame)), 0.35);
       col += drop * 0.7;
 
       // scanlines
-      col *= 0.9 + 0.1 * sin(vUv.y * resolution.y * 1.5708);
+      col *= 0.95 + 0.05 * sin(vUv.y * resolution.y * 1.5708);
 
       // vignette
-      col *= 1.0 - smoothstep(0.3, 0.78, r) * 0.75;
+      col *= 1.0 - smoothstep(0.35, 0.8, r) * 0.5;
 
       // viewfinder overlay (electronic, so no lens distortion, but still on tape)
       vec4 osd = texture2D(tOSD, uv);

@@ -166,8 +166,6 @@ function startAmbience() {
   loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
   loops.under = audio.loop('underwater', { gain: 0, send: 0 });
   loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
-  loops.breath = audio.loop('breath_calm', { gain: 0.05, send: 0 });
-  loops.pant = audio.loop('breath_heavy', { gain: 0, send: 0 });
   for (const l of world.lights) {
     l.hum = audio.loop('fluorescent_hum', { pos: l.pos, gain: 0.22, send: 0.15, ref: 1.5, rolloff: 1.6, rate: 0.97 + Math.random() * 0.06 });
   }
@@ -255,13 +253,10 @@ function tick(dt) {
     audio.setZoomMotor(state === 'playing' ? (player.tZoom - player.zoom) * 3 : 0);
     audio.setMuffled(state === 'paused' ? 500 : underwater ? 650 : 20000);
     const set = (h, v, tc = 0.2) => h && audio.ramp(h.gain.gain, v, tc);
-    const exertion = THREE.MathUtils.clamp((player.running ? 0.8 : 0) + Math.max(0, fx.tension - 0.4), 0, 1);
     set(loops.drone, Math.max(0, fx.tension - 0.1) * 0.9, 0.8);
     set(loops.hiss, 0.045 + fx.nv * 0.04 + fx.glitch * 0.05, 0.1);
     set(loops.under, underwater ? 0.9 : 0, 0.08);
     set(loops.wade, player.wading && !underwater ? Math.min(player.speed / 1.05, 1) * 0.5 : 0, 0.15);
-    set(loops.breath, (1 - exertion) * 0.05, 1.2);
-    set(loops.pant, exertion * 0.1, 1.5);
     for (const l of world.lights) set(l.hum, l.on ? 0.22 : 0, 0.01);
   }
 
@@ -272,7 +267,7 @@ function tick(dt) {
   U.underwater.value = fx.under;
   U.fade.value = state === 'playing' || state === 'paused' ? fx.fade : 0.55;
   U.paused.value = state === 'paused' ? 1 : 0;
-  U.noiseAmt.value = 0.05 + Math.max(0, fx.exposure - 1) * 0.045 + fx.tension * 0.04;
+  U.noiseAmt.value = 0.03 + Math.max(0, fx.exposure - 1) * 0.03 + fx.tension * 0.04;
 
   osdTimer -= dt;
   if (osdTimer <= 0 && state !== 'title') {

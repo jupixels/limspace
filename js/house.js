@@ -13,6 +13,12 @@ const ROOMS = {
   kid: { x1: 6, x2: 11, z1: 8, z2: 13, floor: 'carpet' },
   bath: { x1: 11, x2: 14, z1: 8, z2: 13, floor: 'tile' },
 };
+// real stairs along the hall wall, up through the ceiling into an attic over the living room
+const ATTIC = { x1: 3.5, x2: 7 - T / 2, z1: 2.5, z2: 6 - T / 2, floor: H + 0.12, roof: 4.9 };
+const STAIR = { x0: 4.0, run: 0.32, n: 9, z1: 4.9, z2: 6 - T / 2 };
+STAIR.rise = ATTIC.floor / STAIR.n;
+STAIR.x1 = STAIR.x0 + STAIR.run * STAIR.n;
+
 // doorways between rooms, as the points a creature walks through
 const DOORS = [
   ['living', 'hall', 3.5, 6], ['kitchen', 'hall', 9.5, 6], ['living', 'kitchen', 7, 2.75],
@@ -141,7 +147,11 @@ export function buildHouse(scene) {
 
   // ---------- shell ----------
   for (const r of Object.values(ROOMS)) box(r.x1, r.x2, -0.1, 0, r.z1, r.z2, floorMat[r.floor]);
-  box(0, 18, H, H + 0.1, 0, 13, M.ceiling);
+  // ceiling, with the stairwell cut out of it
+  box(0, 18, H, H + 0.1, 0, STAIR.z1, M.ceiling);
+  box(0, 18, H, H + 0.1, STAIR.z2, 13, M.ceiling);
+  box(0, STAIR.x0, H, H + 0.1, STAIR.z1, STAIR.z2, M.ceiling);
+  box(ATTIC.x2, 18, H, H + 0.1, STAIR.z1, STAIR.z2, M.ceiling);
   wallX(0, 0, 13, [[1, 2]]);
   wallX(0, 13, 18, [], M.garageWall);
   wallX(6, 0, 13, [[3, 4], [9, 10]]);
@@ -206,10 +216,68 @@ export function buildHouse(scene) {
   box(1.2, 1.4, 0.45, 0.7, 3.1, 3.95, M.fabric);
   box(3.4, 3.6, 0.45, 0.7, 3.1, 3.95, M.fabric);
   box(1.9, 2.9, 0, 0.4, 1.6, 2.2, M.darkWood, true); // coffee table
-  // stairs that climb straight into the ceiling
-  for (let i = 0; i < 9; i++) box(5.6, 6.85, 0, 0.25 * (i + 1), 5.5 - 0.45 * (i + 1), 5.5 - 0.45 * i, M.darkWood);
-  colliders.push({ minX: 5.6, maxX: 6.85, minZ: 1.45, maxZ: 5.5, minY: 0, maxY: 2.5 });
-  box(5.55, 5.6, 0.25, 1.2, 1.45, 5.5, M.darkWood);
+  // stairs up along the hall wall, starting by the hall doorway
+  const S = STAIR;
+  for (let i = 0; i < S.n; i++) box(S.x0 + S.run * i, S.x0 + S.run * (i + 1), 0, S.rise * (i + 1), S.z1, S.z2, M.darkWood);
+  // a rail on the open side
+  for (const [x, y] of [[S.x0 + 0.1, 0.25], [S.x1 - 0.1, ATTIC.floor]]) box(x - 0.025, x + 0.025, y, y + 0.95, S.z1 + 0.02, S.z1 + 0.07, M.darkWood);
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, Math.hypot(S.x1 - S.x0 - 0.2, ATTIC.floor - 0.25)), M.darkWood);
+  rail.position.set((S.x0 + S.x1) / 2, (0.25 + ATTIC.floor) / 2 + 0.95, S.z1 + 0.045);
+  rail.rotation.set(0, Math.PI / 2, 0);
+  rail.rotateX(-Math.atan2(ATTIC.floor - 0.25, S.x1 - S.x0 - 0.2));
+  scene.add(rail);
+
+  // ---------- the attic ----------
+  const A = ATTIC;
+  M.attic = new THREE.MeshStandardMaterial({ color: 0x4e3d2e, roughness: 0.95 });
+  M.box = new THREE.MeshStandardMaterial({ color: 0x8a6e4a, roughness: 0.95 });
+  box(A.x1, A.x2, H + 0.1, A.floor, A.z1, S.z1, M.attic);
+  box(A.x1, S.x0, H + 0.1, A.floor, S.z1, A.z2, M.attic);
+  box(A.x1 - T / 2, 7 + T / 2, A.floor, A.roof, A.z1 - T, A.z1, M.attic, true);
+  box(A.x1 - T, A.x1, A.floor, A.roof, A.z1, A.z2, M.attic, true);
+  box(A.x2, 7 + T / 2, A.floor, A.roof, A.z1, 6 + T / 2, M.attic, true);
+  box(A.x1 - T, A.x2, A.floor, A.roof, A.z2, 6 + T / 2, M.attic, true);
+  box(A.x1 - T, 7 + T / 2, A.roof, A.roof + 0.1, A.z1 - T, 6 + T / 2, M.attic);
+  for (let x = A.x1 + 0.4; x < A.x2; x += 0.8) box(x - 0.05, x + 0.05, A.roof - 0.15, A.roof, A.z1, A.z2, M.darkWood); // rafters
+  // boxes, and a camera on a tripod, pointed at the top of the stairs
+  box(A.x1 + 0.1, A.x1 + 0.7, A.floor, A.floor + 0.5, A.z1 + 0.1, A.z1 + 0.8, M.box, true);
+  box(A.x1 + 0.15, A.x1 + 0.6, A.floor + 0.5, A.floor + 0.85, A.z1 + 0.2, A.z1 + 0.65, M.box);
+  box(A.x1 + 0.8, A.x1 + 1.3, A.floor, A.floor + 0.4, A.z1 + 0.1, A.z1 + 0.6, M.box, true);
+  box(A.x2 - 0.8, A.x2 - 0.1, A.floor, A.floor + 0.6, A.z1 + 0.1, A.z1 + 0.7, M.box, true);
+  const tripod = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.35), M.metal);
+    const a = (i / 3) * Math.PI * 2;
+    leg.position.set(Math.cos(a) * 0.18, 0.66, Math.sin(a) * 0.18);
+    leg.rotation.set(Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25);
+    tripod.add(leg);
+  }
+  const camBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.11, 0.24), M.plastic);
+  camBody.position.y = 1.36;
+  tripod.add(camBody);
+  tripod.position.set(5.0, A.floor, 3.75);
+  tripod.lookAt(S.x1 - 0.2, A.floor, 5.4);
+  scene.add(tripod);
+  const tripodLed = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.2, 0.2) }));
+  tripodLed.position.set(0.04, 1.4, 0.12);
+  tripod.add(tripodLed);
+  colliders.push({ minX: 4.8, maxX: 5.2, minZ: 3.55, maxZ: 3.95, minY: A.floor, maxY: A.floor + 1.5 });
+  // a cassette on the boxes: the next tape, not this one
+  const tape04 = new THREE.Group();
+  tape04.add(new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.025, 0.105), M.plastic));
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.04), new THREE.MeshStandardMaterial({
+    map: canvasTex(256, 64, (g) => {
+      g.fillStyle = '#efe9d8'; g.fillRect(0, 0, 256, 64);
+      g.fillStyle = '#1d1d26'; g.font = 'italic bold 34px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('TAPE 04', 128, 34);
+    }), roughness: 0.6,
+  }));
+  label.rotation.x = -Math.PI / 2;
+  label.position.y = 0.0135;
+  tape04.add(label);
+  tape04.position.set(A.x1 + 0.38, A.floor + 0.865, A.z1 + 0.42);
+  tape04.rotation.y = 0.3;
+  scene.add(tape04);
   // floor lamp
   box(0.45, 0.55, 0, 1.5, 5.2, 5.3, M.metal);
   const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, 0.3, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x302820, side: THREE.DoubleSide }));
@@ -391,7 +459,16 @@ export function buildHouse(scene) {
     get power() { return power; },
     zoneAt: (x, z) => roomAt(x, z) ?? 'hall',
     floorAt: (x, z) => ROOMS[roomAt(x, z)]?.floor ?? 'wood',
-    groundAt: () => 0,
+    // ground depends on height too: under the attic is the living room floor
+    groundAt(x, z, y = 0) {
+      const S = STAIR, A = ATTIC;
+      if (x >= S.x0 && x <= A.x2 && z >= S.z1 && z <= S.z2) {
+        return S.rise * (Math.min(S.n - 1, Math.floor((x - S.x0) / S.run)) + 1);
+      }
+      if (y > 1.5 && x >= A.x1 && x <= A.x2 && z >= A.z1 && z <= A.z2) return A.floor;
+      return 0;
+    },
+    tape04: { pos: new THREE.Vector3(3.88, ATTIC.floor + 0.88, 2.92) },
     inPool: () => false,
     roomAt, route, rooms: ROOMS,
     spawn: { pos: new THREE.Vector3(1.5, 0, 1.3), yaw: Math.PI },

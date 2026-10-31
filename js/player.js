@@ -66,7 +66,7 @@ export class Player {
 
   // Highest floor under the player's footprint.
   support(x, z) {
-    const g = this.world.groundAt;
+    const g = (a, b) => this.world.groundAt(a, b, this.pos.y);
     const r = RADIUS * 0.9;
     return Math.max(g(x, z), g(x + r, z), g(x - r, z), g(x, z + r), g(x, z - r));
   }

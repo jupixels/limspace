@@ -1,4 +1,4 @@
-# LIMSPACE
+﻿# LIMSPACE
 
 A found-footage liminal-space horror game that runs in the browser. You play back an unlabeled camcorder tape and walk through empty places that should not exist.
 
@@ -33,7 +33,7 @@ A hotel corridor that doesn't end. Something tall is standing in it. Don't look 
 
 https://jupixels.github.io/limspace/?tape=3 (or finish Tape 02)
 
-A family house at night with the power out, built slightly wrong. The tape is in the VCR. Something blind lives here and it moves toward whatever it hears: walking is noticed, running is heard across the house, crouching is almost silent. The breaker is in the garage, and it is loud.
+A family house at night with the power out, built slightly wrong. The tape is in the VCR. The stairs go up into an attic someone has been filming from. Something blind lives here and it moves toward whatever it hears: walking is noticed, running is heard across the house, crouching is almost silent. The breaker is in the garage, and it is loud.
 
 ## Running locally
 

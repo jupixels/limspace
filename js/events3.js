@@ -91,11 +91,13 @@ export class Director3 {
       audio.play('breaker', { pos: world.breaker.pos, gain: 1.6, send: 0.6, ref: 3 });
       fx.glitch = Math.max(fx.glitch, 0.6);
       this.noise(3, world.breaker.pos); // the whole house hears that
-      this.say('RUN', 1.5);
     } else if (hit === 'front') {
       audio.play('shutter_rattle', { pos: world.frontDoor.pos, gain: 0.6, send: 0.4, rate: 1.7 });
       this.noise(0.5, world.frontDoor.pos);
       this.say('LOCKED', 2);
+    } else if (hit === 'tape04') {
+      audio.play('pickup', { pos: world.tape04.pos, gain: 0.6, send: 0.3, rate: 1.3 });
+      this.say('NOT YET', 2.5);
     } else if (hit === 'wrong' && !world.wrong.opening) {
       world.wrong.opening = true;
       audio.play('door_open', { pos: world.wrong.pos, gain: 1.1, send: 0.4 });
@@ -112,7 +114,8 @@ export class Director3 {
     // what you're looking at, within arm's reach
     const near = (p, r = 1.6) => camera.position.distanceTo(p) < r && this.looking(p, 0.75);
     this.focus = near(world.vcr.pos, 1.9) ? 'vcr' : near(world.breaker.pos) ? 'breaker'
-      : near(world.frontDoor.pos) ? 'front' : near(world.wrong.pos) && !world.wrong.opening ? 'wrong' : null;
+      : near(world.frontDoor.pos) ? 'front' : near(world.wrong.pos) && !world.wrong.opening ? 'wrong'
+        : near(world.tape04.pos, 1.4) ? 'tape04' : null;
     this.prompt = this.focus === 'vcr' ? (world.power ? '[E] eject' : '[E]') : this.focus === 'breaker' && !world.power ? '[E] power'
       : this.focus ? '[E]' : null;
 
@@ -203,7 +206,7 @@ export class Director3 {
     this.audio.ramp(this.clicks.src.playbackRate, L.state === 'hunt' ? 1.35 : L.state === 'investigate' ? 1.15 : 0.9, 0.3);
 
     this.heartbeat = THREE.MathUtils.clamp(1 - (dist - 1) / 7, 0, 1);
-    if (dist < REACH) {
+    if (dist < REACH && player.pos.y < 0.8) { // up in the attic, it can only wait below
       this.L = null;
       this.heartbeat = 0;
       this.audio.ramp(this.clicks.gain.gain, 0, 0.05);

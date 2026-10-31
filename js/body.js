@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-const STILL_AT = 0.25; // fraction through the walk cycle used as the standing pose
-const BACK = 0.26; // lens sits ahead of the body so the cut ends of the arms and legs face away from it
+const BACK = 0.2; // lens sits ahead of the body so the cut ends of the arms and legs face away from it
+const ARM_HANG = 0.1; // how far the hanging arms angle out from the sides
 const ARM_BONES = /^(left|right)(forearm|hand)/i;
 const LEG_BONES = /^(left|right)(upleg|leg|foot|toebase)/i;
 const LEG_FADE = [0.62, 0.72]; // bind-pose height band (m) where the thighs dissolve
@@ -50,14 +50,12 @@ export class Body {
     };
     this.walk = act(walk);
     this.run = act(run);
-    // standing still holds one frame of the walk (feet passing) instead of a fidgety idle
-    const still = walk.animations[0].clone();
-    still.name = 'still';
-    this.idle = this.mixer.clipAction(still);
-    this.idle.play();
-    this.idle.time = still.duration * STILL_AT;
-    this.idle.paused = true;
-    this.idle.setEffectiveWeight(1);
+    // Standing still isn't a clip: with the walk/run weights at zero the mixer blends back to
+    // the rig's rest pose (straight legs), and stand() then lowers the arms to the sides.
+    this.still = 1;
+    this.arms = ['Left', 'Right'].map((s) => ({
+      upper: model.getObjectByName(`${s}Arm`), fore: model.getObjectByName(`${s}ForeArm`),
+    }));
 
     // size from the posed skeleton (the bind-pose mesh bounds are unreliable): head bone to toes
     this.mixer.update(0);
@@ -150,9 +148,32 @@ uniform float uWhole;`)
     const lerpW = (a, w) => a.setEffectiveWeight(a.getEffectiveWeight() + (w - a.getEffectiveWeight()) * blend);
     lerpW(this.walk, wWalk);
     lerpW(this.run, wRun);
-    lerpW(this.idle, Math.max(0, 1 - wWalk - wRun));
+    this.still += (Math.max(0, 1 - wWalk - wRun) - this.still) * blend;
     this.walk.timeScale = Math.max(0.4, speed / 1.8) * (player.wading ? 0.7 : 1);
     this.run.timeScale = Math.max(0.6, speed / 3.9);
     this.mixer.update(player.climb ? dt * 0.3 : dt);
+    this.stand(this.still);
+  }
+
+  // Swing each upper arm (in world space, so the rig's bone axes don't matter) until the
+  // arm hangs straight down, slightly out from the body, blended by how still we are.
+  stand(weight) {
+    if (weight < 0.001) return;
+    this.root.updateMatrixWorld(true);
+    const a = new THREE.Vector3(), f = new THREE.Vector3(), target = new THREE.Vector3();
+    const qWorld = new THREE.Quaternion(), qParent = new THREE.Quaternion(), qSwing = new THREE.Quaternion();
+    for (const { upper, fore } of this.arms) {
+      upper.getWorldPosition(a);
+      fore.getWorldPosition(f);
+      const dir = f.sub(a).normalize();
+      // outward is the horizontal part of the current arm direction (straight out in the rest pose)
+      target.set(dir.x, 0, dir.z).normalize().multiplyScalar(ARM_HANG).add(new THREE.Vector3(0, -1, 0)).normalize();
+      qSwing.setFromUnitVectors(dir, target);
+      upper.getWorldQuaternion(qWorld);
+      upper.parent.getWorldQuaternion(qParent);
+      const local = qParent.invert().multiply(qSwing.multiply(qWorld));
+      upper.quaternion.slerp(local, weight);
+      upper.updateMatrixWorld(true);
+    }
   }
 }

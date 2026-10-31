@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { POOL_FLOOR } from './world.js';
 
 const FIGURE_STAGES = [-34, -28, -23, -19.6];
 const BASE_TENSION = { hall: 0.05, corridor: 0.15, flooded: 0.25, end: 0.35, void: 0.55 };
@@ -19,7 +20,6 @@ export class Director {
     this.figSeen = false;
     this.finale = 0;
     this.prevNv = false;
-    this.nearDark = 0;
   }
 
   looking(target, cos) {
@@ -81,11 +81,13 @@ export class Director {
     const { world, audio, fx, camera } = this;
     const s = world.swimmer;
     if (!this.swim && !this.swimDone && t > 55 && zone === 'hall') {
-      const lane = camera.position.x > 0 ? 3 : -3;
-      if (this.looking(new THREE.Vector3(lane, -1.5, 0), 0.8) && Math.abs(camera.position.z) < 22) {
+      // from the deck it passes the near lane; in the water, the far one
+      const swimming = world.inPool(camera.position.x, camera.position.z);
+      const lane = (camera.position.x > 0) !== swimming ? 3 : -3;
+      if (this.looking(new THREE.Vector3(lane, -1.2, 0), 0.8) && Math.abs(camera.position.z) < 22) {
         const z0 = camera.position.z > 0 ? -14 : 14;
         this.swim = { t: 0, z0, z1: -z0, lane };
-        s.position.set(lane, -1.55, z0);
+        s.position.set(lane, POOL_FLOOR + 0.3, z0);
         s.visible = true;
         this.swim.h = audio.play('underwater_presence', { pos: s.position, gain: 2.4, send: 0.8, ref: 4 });
         audio.play('underwater_presence', { pos: s.position, gain: 1.6, send: 0.9, ref: 4, rate: 0.75, delay: 3.2 });
@@ -97,7 +99,7 @@ export class Director {
       const w = this.swim;
       w.t += dt;
       const k = w.t / 7.5;
-      s.position.set(w.lane + Math.sin(k * 7) * 0.35, -1.55 + Math.sin(k * 11) * 0.06, THREE.MathUtils.lerp(w.z0, w.z1, k));
+      s.position.set(w.lane + Math.sin(k * 7) * 0.35, POOL_FLOOR + 0.3 + Math.sin(k * 11) * 0.06, THREE.MathUtils.lerp(w.z0, w.z1, k));
       s.rotation.z = Math.cos(k * 7) * 0.15;
       if (w.h?.panner) audio.setPos(w.h.panner, s.position);
       if (k >= 1) {
@@ -114,11 +116,6 @@ export class Director {
     const fig = world.figure;
     const nearVoid = zone === 'end' || zone === 'void';
     const nvOn = fx.nvOn;
-    const doorway = new THREE.Vector3(35, 1.2, -17.5);
-
-    if (nearVoid && camera.position.z < -10 && this.looking(doorway, 0.85)) this.nearDark += dt;
-    else this.nearDark = Math.max(0, this.nearDark - dt);
-    fx.hint = !fx.usedNv && this.nearDark > 4 && Math.floor(this.nearDark * 1.5) % 2 === 0 ? '[N] NIGHT' : null;
 
     if (nvOn && !this.prevNv && nearVoid && this.figStage < FIGURE_STAGES.length) {
       this.figStage++;

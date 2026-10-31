@@ -13,6 +13,7 @@ export const CamcorderShader = {
     nv: { value: 0 },
     fade: { value: 1 },
     paused: { value: 0 },
+    underwater: { value: 0 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -24,7 +25,7 @@ export const CamcorderShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tOSD;
     uniform vec2 resolution;
-    uniform float time, glitch, tension, noiseAmt, nv, fade, paused;
+    uniform float time, glitch, tension, noiseAmt, nv, fade, paused, underwater;
     varying vec2 vUv;
 
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -62,6 +63,7 @@ export const CamcorderShader = {
       float gh = hash(vec2(blk, floor(time * 14.0)));
       if (gh < glitch * 0.45) uv.x += (hash(vec2(blk, frame)) - 0.5) * 0.16 * glitch;
       if (paused > 0.5) uv.y += (hash(vec2(frame, 1.0)) - 0.5) * 0.004;
+      uv += underwater * vec2(sin(uv.y * 18.0 + time * 2.1), cos(uv.x * 14.0 + time * 1.7)) * 0.005;
 
       vec2 duv = barrel(uv, 0.22);
       vec2 dir = duv - 0.5;
@@ -84,6 +86,9 @@ export const CamcorderShader = {
       float ca = 0.002 + r * 0.007 + glitch * 0.012;
       col.r = mix(col.r, texture2D(tDiffuse, duv + dir * ca).r, 0.7);
       col.b = mix(col.b, texture2D(tDiffuse, duv - dir * ca).b, 0.7);
+
+      // underwater: murky, green-blue, light dies off fast
+      col = mix(col, col * vec3(0.32, 0.72, 0.74) + vec3(0.0, 0.035, 0.045), underwater);
 
       // night vision: amplified mono green with IR bloom
       float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -123,16 +128,12 @@ export const CamcorderShader = {
     }`,
 };
 
-const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-const pad = (n) => String(n).padStart(2, '0');
-
 export class OSD {
   constructor() {
     this.canvas = document.createElement('canvas');
     this.g = this.canvas.getContext('2d');
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.minFilter = THREE.LinearFilter;
-    this.start = new Date(1997, 9, 31, 2, 13, 7).getTime();
     this.resize(innerWidth / innerHeight);
   }
 
@@ -154,60 +155,30 @@ export class OSD {
 
   draw(s) {
     const g = this.g, W = this.canvas.width, H = this.canvas.height;
-    const m = 48, fs = 38;
+    const m = 40;
     g.clearRect(0, 0, W, H);
-    g.font = `${fs}px VT323, monospace`;
+    g.font = '26px VT323, monospace';
     g.textBaseline = 'top';
 
-    if (s.paused) {
-      this.text('❙❙ PAUSE', m, m);
-    } else if (s.recording) {
-      if (Math.floor(s.t * 1.2) % 2 === 0) {
-        g.fillStyle = '#000';
-        g.beginPath(); g.arc(m + 14, m + 17, 12, 0, 6.2832); g.fill();
-        g.fillStyle = '#e8232a';
-        g.beginPath(); g.arc(m + 12, m + 15, 12, 0, 6.2832); g.fill();
-      }
-      this.text('REC', m + 34, m);
-    }
-    this.text('SP', m, m + fs + 6);
-
-    // battery
-    const bx = W - m - 70, by = m + 6;
-    g.fillStyle = '#000';
-    g.fillRect(bx + 2, by + 2, 62, 26); g.fillRect(bx + 66, by + 10, 6, 10);
-    g.strokeStyle = '#f2f2f2'; g.lineWidth = 3;
-    g.strokeRect(bx, by, 62, 26);
-    g.fillStyle = '#f2f2f2';
-    g.fillRect(bx + 63, by + 8, 5, 10);
-    const bars = Math.ceil(s.battery / 25);
-    const lowBlink = s.battery < 25 && Math.floor(s.t * 2) % 2;
-    if (!lowBlink) for (let i = 0; i < bars; i++) g.fillRect(bx + 5 + i * 14, by + 5, 11, 16);
-
-    if (s.nv > 0.5) this.text('NIGHT  ◐', W - m, m + fs + 6, 'right', '#d6ffd0');
-
-    // tape counter and timestamp
-    const sec = Math.floor(s.t);
-    this.text(`${Math.floor(sec / 3600)}:${pad(Math.floor(sec / 60) % 60)}:${pad(sec % 60)}`, m, H - m - fs);
-    const d = new Date(this.start + s.t * 1000);
-    const h = d.getHours();
-    this.text(`${h < 12 ? 'AM' : 'PM'} ${h % 12 || 12}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`, W - m, H - m - fs * 2 - 4, 'right');
-    this.text(`${MONTHS[d.getMonth()]}.${pad(d.getDate())} ${d.getFullYear()}`, W - m, H - m - fs, 'right');
-
-    // zoom bar while zooming
-    if (s.zoomShow > 0) {
-      g.globalAlpha = Math.min(1, s.zoomShow);
-      const zx = W / 2 - 150, zy = H - m - fs + 8;
-      this.text('W', zx - 30, zy - 8);
-      this.text('T', zx + 312, zy - 8);
-      g.fillStyle = '#000'; g.fillRect(zx + 2, zy + 10, 300, 4);
-      g.fillStyle = '#f2f2f2'; g.fillRect(zx, zy + 8, 300, 4);
-      const p = (s.zoom - 1) / 5;
-      g.fillRect(zx + p * 290, zy, 10, 20);
-      g.globalAlpha = 1;
+    // a small blinking dot is all that's left of the viewfinder
+    if (s.recording && Math.floor(s.t * 1.2) % 2 === 0) {
+      g.fillStyle = 'rgba(0,0,0,0.6)';
+      g.beginPath(); g.arc(m + 1, m + 1, 7, 0, 6.2832); g.fill();
+      g.fillStyle = '#e8232a';
+      g.beginPath(); g.arc(m, m, 7, 0, 6.2832); g.fill();
     }
 
-    if (s.hint) this.text(s.hint, W / 2, H / 2 + 120, 'center', '#f2f2f2');
+    // night vision is the only mode that earns a readout
+    if (s.nv > 0.5) {
+      const bx = W - m - 40, by = m - 8;
+      g.strokeStyle = '#d6ffd0'; g.lineWidth = 2;
+      g.strokeRect(bx, by, 34, 15);
+      g.fillStyle = '#d6ffd0';
+      g.fillRect(bx + 34, by + 4, 3, 7);
+      const lowBlink = s.battery < 25 && Math.floor(s.t * 2) % 2;
+      if (!lowBlink) g.fillRect(bx + 3, by + 3, 28 * s.battery / 100, 9);
+      this.text('IR', bx - 10, by - 4, 'right', '#d6ffd0');
+    }
     this.texture.needsUpdate = true;
   }
 }

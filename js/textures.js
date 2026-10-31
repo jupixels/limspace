@@ -13,58 +13,6 @@ function finish(canvas, srgb) {
   return t;
 }
 
-// Square ceramic tiles with grout, colour jitter and grime. Returns colour + bump maps.
-export function tileTextures({
-  tiles = 8, size = 512, base = [222, 232, 229], grout = [140, 152, 150],
-  jitter = 10, dirt = 0.3, groutW = 4, seed = 1, speckle = 0,
-} = {}) {
-  const r = rng(seed);
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const g = c.getContext('2d');
-  const b = document.createElement('canvas');
-  b.width = b.height = size;
-  const bg = b.getContext('2d');
-
-  g.fillStyle = `rgb(${grout})`;
-  g.fillRect(0, 0, size, size);
-  bg.fillStyle = '#000';
-  bg.fillRect(0, 0, size, size);
-
-  const t = size / tiles;
-  for (let i = 0; i < tiles; i++) {
-    for (let j = 0; j < tiles; j++) {
-      const v = (r() - 0.5) * jitter;
-      const x = i * t + groutW / 2, y = j * t + groutW / 2, w = t - groutW;
-      g.fillStyle = `rgb(${base.map((ch) => Math.round(ch + v)).join(',')})`;
-      g.fillRect(x, y, w, w);
-      // glaze highlight on the upper edge of each tile
-      g.fillStyle = 'rgba(255,255,255,0.06)';
-      g.fillRect(x, y, w, w * 0.12);
-      bg.fillStyle = '#bbb';
-      bg.fillRect(x, y, w, w);
-      bg.fillStyle = '#fff';
-      bg.fillRect(x + 2, y + 2, w - 4, w - 4);
-    }
-  }
-
-  for (let k = 0; k < speckle; k++) {
-    g.fillStyle = `rgba(0,0,0,${0.08 + r() * 0.12})`;
-    g.fillRect(r() * size, r() * size, 1 + r() * 2, 1 + r() * 2);
-  }
-
-  for (let k = 0; k < 120 * dirt; k++) {
-    const x = r() * size, y = r() * size, rad = 6 + r() * 50;
-    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-    grad.addColorStop(0, `rgba(60,58,40,${0.05 + r() * 0.08})`);
-    grad.addColorStop(1, 'rgba(60,58,40,0)');
-    g.fillStyle = grad;
-    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-
-  return { map: finish(c, true), bump: finish(b, false) };
-}
-
 // Tileable rippling-water normal map built from integer-frequency sine waves.
 export function waterNormal(size = 256) {
   const c = document.createElement('canvas');

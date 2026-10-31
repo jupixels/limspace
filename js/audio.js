@@ -1,6 +1,8 @@
 const FILES = [
-  'pool_ambience', 'fluorescent_hum', 'step_tile', 'step_water', 'tape_hiss', 'rec_start', 'drip',
+  'pool_ambience', 'fluorescent_hum', 'tape_hiss', 'rec_start', 'drip',
   'distant_door', 'underwater_presence', 'dread_drone', 'light_flicker', 'glitch',
+  'boot_1', 'boot_2', 'puddle_1', 'puddle_2', 'puddle_3', 'wade_1', 'wade_2', 'wade_loop',
+  'splash_in', 'underwater', 'climb_out', 'breath_calm', 'breath_heavy', 'land',
 ];
 
 export class AudioSys {
@@ -146,8 +148,9 @@ export class AudioSys {
     this.verbs.small.gain.setTargetAtTime(small, t, 0.6);
   }
 
-  setMuffled(on) {
-    if (!this.ctx) return;
-    this.muffle.frequency.setTargetAtTime(on ? 500 : 20000, this.ctx.currentTime, 0.15);
+  setMuffled(cutoff) {
+    if (!this.ctx || this.cutoff === cutoff) return;
+    this.cutoff = cutoff;
+    this.muffle.frequency.setTargetAtTime(cutoff, this.ctx.currentTime, 0.12);
   }
 }

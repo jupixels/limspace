@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LIMSPACE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="title" class="overlay">
+    <div class="panel">
+      <h1>LIMSPACE</h1>
+      <p class="sub">TAPE 01 &mdash; UNLABELED</p>
+      <button id="play">&#9654; PLAY TAPE</button>
+      <p id="status" class="hint">headphones recommended</p>
+      <ul class="controls">
+        <li><b>WASD</b> move</li>
+        <li><b>SHIFT</b> run</li>
+        <li><b>C</b> crouch</li>
+        <li><b>WHEEL</b> zoom</li>
+        <li><b>N</b> night vision</li>
+        <li><b>ESC</b> pause</li>
+      </ul>
+    </div>
+  </div>
+  <div id="pause" class="overlay hidden">
+    <div class="panel">
+      <h2>&#10074;&#10074; PAUSE</h2>
+      <p class="hint">click to resume</p>
+    </div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

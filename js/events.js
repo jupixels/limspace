@@ -85,13 +85,13 @@ export class Director {
     fx.tension = Math.max(fx.tension, 0.9);
     fx.glitch = Math.max(fx.glitch, 0.8);
     for (const l of world.lights) if (l.region === 'hall') l.flicker = 0.8 + Math.random() * 1.2;
-    // it surfaces at whichever end of the pool is further from you
+    // it lies against the far long wall, level with where the tape was, facing you across the lanes
     const s = world.swimmer;
-    const z0 = camera.position.z > 0 ? -13 : 13;
-    s.position.set(camera.position.x > 0 ? -3 : 3, POOL_FLOOR + 0.3, z0);
+    const side = camera.position.x > 0 ? -1 : 1;
+    s.position.set(side * 5.4, POOL_FLOOR + 0.3, world.cassette.position.z);
     s.visible = true;
     this.swim = null;
-    this.hunt = { delay: SWIM.wakeDelay, vel: new THREE.Vector2(), heading: z0 > 0 ? Math.PI : 0, glideIn: 0, wasSeen: true };
+    this.hunt = { delay: SWIM.wakeDelay, vel: new THREE.Vector2(), heading: -side * Math.PI / 2, glideIn: 0, wasSeen: true };
     audio.play('splash_far', { pos: s.position, gain: 1.4, send: 0.9, ref: 3 });
   }
 

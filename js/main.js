@@ -47,8 +47,10 @@ const gtaoRender = gtao.render.bind(gtao);
 gtao.render = (...args) => {
   const v = world.water.visible;
   world.water.visible = false;
+  if (body) body.root.visible = false; // its hidden parts would still cast AO
   gtaoRender(...args);
   world.water.visible = v;
+  if (body) body.root.visible = true;
 };
 composer.addPass(gtao);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.6, 0.85);
@@ -77,7 +79,7 @@ const prepared = (async () => {
   try {
     body = await new Body().load('models');
     scene.add(body.root);
-    body.showHeadDuring(world.water);
+    body.showWholeIn(world.water);
   } catch (err) {
     console.warn('body model unavailable', err);
   }
@@ -164,7 +166,7 @@ function startAmbience() {
   loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
   loops.under = audio.loop('underwater', { gain: 0, send: 0 });
   loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
-  loops.breath = audio.loop('breath_calm', { gain: 0.16, send: 0 });
+  loops.breath = audio.loop('breath_calm', { gain: 0.05, send: 0 });
   loops.pant = audio.loop('breath_heavy', { gain: 0, send: 0 });
   for (const l of world.lights) {
     l.hum = audio.loop('fluorescent_hum', { pos: l.pos, gain: 0.22, send: 0.15, ref: 1.5, rolloff: 1.6, rate: 0.97 + Math.random() * 0.06 });
@@ -252,15 +254,14 @@ function tick(dt) {
     audio.setReverb(...(REVERB[zone] ?? REVERB.corridor));
     audio.setZoomMotor(state === 'playing' ? (player.tZoom - player.zoom) * 3 : 0);
     audio.setMuffled(state === 'paused' ? 500 : underwater ? 650 : 20000);
-    const now = audio.ctx.currentTime;
-    const set = (h, v, tc = 0.2) => h?.gain.gain.setTargetAtTime(v, now, tc);
+    const set = (h, v, tc = 0.2) => h && audio.ramp(h.gain.gain, v, tc);
     const exertion = THREE.MathUtils.clamp((player.running ? 0.8 : 0) + Math.max(0, fx.tension - 0.4), 0, 1);
     set(loops.drone, Math.max(0, fx.tension - 0.1) * 0.9, 0.8);
     set(loops.hiss, 0.045 + fx.nv * 0.04 + fx.glitch * 0.05, 0.1);
     set(loops.under, underwater ? 0.9 : 0, 0.08);
     set(loops.wade, player.wading && !underwater ? Math.min(player.speed / 1.05, 1) * 0.5 : 0, 0.15);
-    set(loops.breath, (1 - exertion) * 0.16, 1.2);
-    set(loops.pant, exertion * 0.3, 1.5);
+    set(loops.breath, (1 - exertion) * 0.05, 1.2);
+    set(loops.pant, exertion * 0.1, 1.5);
     for (const l of world.lights) set(l.hum, l.on ? 0.22 : 0, 0.01);
   }
 

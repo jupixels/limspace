@@ -2,10 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-// The lens sits ahead of the neck so the empty collar never comes into view;
-// the body slides further back as you look down.
-const BACK = 0.32;
-const BACK_LOOKING_DOWN = 0.2;
+const BACK = 0.08; // only the arms are drawn in first person, so the body can sit right under the lens
+const ARM_BONES = /^(left|right)(forearm|hand)/i;
 
 // Keep animations in place: the controller moves the body, not the clip.
 function stripRootMotion(clip) {
@@ -18,7 +16,7 @@ function stripRootMotion(clip) {
   return clip;
 }
 
-// The player's own hazmat-suited body, visible when looking down and in reflections.
+// The player's own hazmat-suited body: hands and forearms in first person, all of it in reflections.
 export class Body {
   async load(base) {
     const loader = new GLTFLoader();
@@ -32,8 +30,8 @@ export class Body {
         o.material.envMapIntensity = 0.8;
         if (o.isSkinnedMesh) this.skinned = o;
       }
-      if (o.isBone && !this.head && /^head$/i.test(o.name)) this.head = o;
     });
+    this.maskToArms();
 
     this.inner = new THREE.Group();
     this.inner.add(model);
@@ -60,34 +58,51 @@ export class Body {
     const s = HEAD_Y / (y('Head') - toe);
     model.scale.multiplyScalar(s);
     model.position.y = -toe * s + 0.03;
-    this.hideHead(true);
     return this;
   }
 
-  hideHead(hidden) {
-    if (!this.head) return;
-    this.head.scale.setScalar(hidden ? 0.001 : 1);
+  // Tag each vertex by how much it follows the forearm/hand bones, and discard the rest
+  // in the shader unless the whole figure is wanted.
+  maskToArms() {
+    this.whole = { value: 0 };
+    const mesh = this.skinned;
+    const bones = mesh.skeleton.bones;
+    const arm = bones.map((b) => ARM_BONES.test(b.name));
+    const idx = mesh.geometry.attributes.skinIndex, wt = mesh.geometry.attributes.skinWeight;
+    const keep = new Float32Array(idx.count);
+    const comps = ['getX', 'getY', 'getZ', 'getW'];
+    for (let i = 0; i < idx.count; i++) {
+      for (const c of comps) if (arm[idx[c](i)]) keep[i] += wt[c](i);
+    }
+    mesh.geometry.setAttribute('aKeep', new THREE.BufferAttribute(keep, 1));
+    const mat = mesh.material;
+    mat.side = THREE.DoubleSide; // the cut sleeve shows its inside rather than a hole
+    mat.customProgramCacheKey = () => 'arms-mask';
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWhole = this.whole;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aKeep;\nvarying float vKeep;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKeep = aKeep;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vKeep;\nuniform float uWhole;')
+        .replace('void main() {', 'void main() {\n  if (uWhole < 0.5 && vKeep < 0.5) discard;');
+    };
   }
 
-  // Reflections should show a whole person, so the head comes back just for that render.
-  showHeadDuring(reflector) {
+  // The water's reflection shows the whole person.
+  showWholeIn(reflector) {
     const orig = reflector.onBeforeRender;
     reflector.onBeforeRender = (...args) => {
-      this.hideHead(false);
-      this.root.updateMatrixWorld(true);
-      this.skinned?.skeleton.update();
+      this.whole.value = 1;
       orig.apply(reflector, args);
-      this.hideHead(true);
-      this.root.updateMatrixWorld(true);
-      this.skinned?.skeleton.update();
+      this.whole.value = 0;
     };
   }
 
   update(dt, player) {
     const p = player.pos;
     const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
-    const back = BACK + BACK_LOOKING_DOWN * THREE.MathUtils.clamp(-player.pitch / 1.2, 0, 1);
-    this.root.position.set(p.x + sy * back, p.y, p.z + cy * back);
+    this.root.position.set(p.x + sy * BACK, p.y, p.z + cy * BACK);
     this.root.rotation.y = player.yaw + Math.PI;
     // crouching: sink with the camera (the rig has no crouch clip)
     this.inner.position.y = player.eye - 1.62;
@@ -103,7 +118,5 @@ export class Body {
     this.walk.timeScale = Math.max(0.4, speed / 1.8) * (player.wading ? 0.7 : 1);
     this.run.timeScale = Math.max(0.6, speed / 3.9);
     this.mixer.update(player.climb ? dt * 0.3 : dt);
-    // the clips key Head.scale too, so hide it again after they apply
-    this.hideHead(true);
   }
 }

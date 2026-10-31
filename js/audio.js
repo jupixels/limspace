@@ -21,7 +21,7 @@ export class AudioSys {
     this.send = ctx.createGain();
     // a vast tiled hall and a tight corridor; zone crossfades between them
     this.verbs = {};
-    for (const [name, sec, decay] of [['hall', 5.0, 2.4], ['small', 1.5, 3.2]]) {
+    for (const [name, sec, decay] of [['hall', 3.6, 2.4], ['small', 1.4, 3.2]]) {
       const conv = ctx.createConvolver();
       conv.buffer = this.impulse(sec, decay);
       const wet = ctx.createGain();
@@ -55,7 +55,8 @@ export class AudioSys {
     return buf;
   }
 
-  chain(src, { pos, gain = 1, send = 0.5, ref = 2, rolloff = 1.2 }) {
+  // HRTF panning is costly; long-running loops use the cheap model so the audio thread keeps up.
+  chain(src, { pos, gain = 1, send = 0.5, ref = 2, rolloff = 1.2, hrtf = true }) {
     const ctx = this.ctx;
     const g = ctx.createGain();
     g.gain.value = gain;
@@ -63,7 +64,7 @@ export class AudioSys {
     let out = g, panner = null;
     if (pos) {
       panner = ctx.createPanner();
-      panner.panningModel = 'HRTF';
+      panner.panningModel = hrtf ? 'HRTF' : 'equalpower';
       panner.distanceModel = 'inverse';
       panner.refDistance = ref;
       panner.rolloffFactor = rolloff;
@@ -101,7 +102,7 @@ export class AudioSys {
     src.buffer = this.buffers[name];
     src.loop = true;
     src.playbackRate.value = opts.rate ?? 1;
-    const h = this.chain(src, opts);
+    const h = this.chain(src, { hrtf: false, ...opts });
     src.start(this.ctx.currentTime, Math.random() * src.buffer.duration);
     return h;
   }
@@ -123,11 +124,20 @@ export class AudioSys {
     this.zoomOsc = osc;
   }
 
+  // Glide a parameter toward a value. Only schedules when the target really changes, and clears
+  // what was queued before, so per-frame calls don't pile up events on the audio thread.
+  ramp(param, value, tc) {
+    if (param._target !== undefined && Math.abs(param._target - value) < Math.max(0.01, 0.004 * Math.abs(value))) return;
+    const t = this.ctx.currentTime;
+    param.cancelScheduledValues(t);
+    param.setTargetAtTime(value, t, tc);
+    param._target = value;
+  }
+
   setZoomMotor(rate) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    this.zoomGain.gain.setTargetAtTime(Math.min(Math.abs(rate) * 0.03, 0.035), t, 0.03);
-    this.zoomOsc.frequency.setTargetAtTime(160 + Math.abs(rate) * 60, t, 0.05);
+    this.ramp(this.zoomGain.gain, Math.min(Math.abs(rate) * 0.03, 0.035), 0.03);
+    this.ramp(this.zoomOsc.frequency, 160 + Math.abs(rate) * 60, 0.05);
   }
 
   setListener(cam, fwd) {
@@ -143,14 +153,12 @@ export class AudioSys {
   }
 
   setReverb(hall, small) {
-    const t = this.ctx.currentTime;
-    this.verbs.hall.gain.setTargetAtTime(hall, t, 0.6);
-    this.verbs.small.gain.setTargetAtTime(small, t, 0.6);
+    this.ramp(this.verbs.hall.gain, hall, 0.6);
+    this.ramp(this.verbs.small.gain, small, 0.6);
   }
 
   setMuffled(cutoff) {
-    if (!this.ctx || this.cutoff === cutoff) return;
-    this.cutoff = cutoff;
-    this.muffle.frequency.setTargetAtTime(cutoff, this.ctx.currentTime, 0.12);
+    if (!this.ctx) return;
+    this.ramp(this.muffle.frequency, cutoff, 0.12);
   }
 }

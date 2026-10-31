@@ -13,12 +13,15 @@ import { CamcorderShader, OSD } from './camcorder.js';
 import { Director } from './events.js';
 import { buildHotel } from './hotel.js';
 import { Director2 } from './events2.js';
+import { buildHouse } from './house.js';
+import { Director3 } from './events3.js';
 
 // each tape is its own page: ?tape=2 loads Tape 02
-const TAPE = new URLSearchParams(location.search).get('tape') === '2' ? 2 : 1;
+const TAPE = [1, 2, 3].includes(+new URLSearchParams(location.search).get('tape')) ? +new URLSearchParams(location.search).get('tape') : 1;
 const TAPES = {
   1: { title: 'TAPE 01 &mdash; UNLABELED', build: buildWorld, director: Director },
   2: { title: 'TAPE 02 &mdash; VACANCY', build: buildHotel, director: Director2 },
+  3: { title: 'TAPE 03 &mdash; HOME', build: buildHouse, director: Director3 },
 };
 
 // Camcorder sensors were low-res; rendering below native keeps it soft (and fast).
@@ -26,6 +29,7 @@ const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
 const REVERB = {
   hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2],
   corridor2: [0.05, 0.3], room: [0, 0.2],
+  living: [0.02, 0.3], kitchen: [0.02, 0.35], garage: [0.08, 0.45], master: [0, 0.2], kid: [0, 0.2], bath: [0.03, 0.4],
 };
 const AIR_FOG = { color: new THREE.Color(0x0c1514), density: 0.016 };
 const WATER_FOG = { color: new THREE.Color(0x0a3236), density: 0.2 };
@@ -178,19 +182,26 @@ $('play').addEventListener('click', async (e) => {
 $('pause').addEventListener('click', lock);
 $('pausePanel').addEventListener('click', (e) => e.stopPropagation());
 $('resume').addEventListener('click', lock);
+// each tape's end card leads into the next one; the last one rewinds
+const ENDS = {
+  1: { sub: 'A SECOND TAPE WAS FOUND IN THE WATER', next: '&#9654; INSERT TAPE 02', back: '&#9664;&#9664; REWIND TAPE 01' },
+  2: { sub: 'THE TELEVISION IN ROOM 215 HAD ANOTHER TAPE', next: '&#9654; INSERT TAPE 03', back: '&#9664;&#9664; REWIND TAPE 02' },
+  3: { sub: 'TAPE 04 &mdash; NOT YET RECOVERED', next: '&#9664;&#9664; REWIND TAPE 03', back: '&#9664;&#9664; BACK TO TAPE 01' },
+};
+const END = ENDS[TAPE];
+$('endTitle').textContent = `END OF TAPE 0${TAPE}`;
+$('endSub').innerHTML = END.sub;
+$('again').innerHTML = END.next;
+$('back').innerHTML = END.back;
 $('again').addEventListener('click', () => {
-  // Tape 01 leads into Tape 02; Tape 02 rewinds itself
-  if (TAPE === 1) location.search = '?tape=2';
+  if (TAPE < 3) location.search = `?tape=${TAPE + 1}`;
   else location.reload();
 });
-$('back').addEventListener('click', () => { location.search = TAPE === 1 ? '' : '?tape=1'; });
+$('back').addEventListener('click', () => {
+  if (TAPE < 3) location.reload();
+  else location.search = '';
+});
 $('tapeTitle').innerHTML = TAPES[TAPE].title;
-if (TAPE === 2) {
-  $('endTitle').textContent = 'END OF TAPE 02';
-  $('endSub').innerHTML = 'TAPE 03 &mdash; NOT YET RECOVERED';
-  $('again').innerHTML = '&#9664;&#9664; REWIND TAPE';
-  $('back').innerHTML = '&#9664;&#9664; BACK TO TAPE 01';
-}
 
 document.addEventListener('pointerlockchange', () => {
   player.locked = document.pointerLockElement === renderer.domElement;
@@ -224,12 +235,16 @@ function startAmbience() {
     loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
     loops.under = audio.loop('underwater', { gain: 0, send: 0 });
     loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
-  } else {
+  } else if (TAPE === 2) {
     loops.room = audio.loop('hotel_ambience', { gain: 0.5, send: 0 });
     loops.whine = audio.loop('stare_whine', { gain: 0, send: 0 });
+  } else {
+    loops.room = audio.loop('house_ambience', { gain: 0.45, send: 0 });
+    loops.clock = audio.loop('clock', { pos: world.clockPos, gain: 0.5, send: 0.2, ref: 1.5 });
   }
   loops.heart = audio.loop('heartbeat', { gain: 0, send: 0 });
   for (const l of world.lights) {
+    if (l.silent) continue;
     l.hum = audio.loop('fluorescent_hum', { pos: l.pos, gain: 0.22, send: 0.15, ref: 1.5, rolloff: 1.6, rate: 0.97 + Math.random() * 0.06 });
   }
 }
@@ -257,6 +272,14 @@ function footstep() {
   const k = (player.running ? 1.5 : 1) * (crouch ? 0.4 : 1);
   const rate = 0.9 + Math.random() * 0.2;
   if (player.wading) audio.play(pick('wade_1', 'wade_2'), { pos: feet(), gain: 0.55 * k, send: 0.6, ref: 1.5, rate });
+  else if (world.floorAt) {
+    // the house: what you walk on decides what you sound like, and the Listener is listening
+    const floor = world.floorAt(player.pos.x, player.pos.z);
+    const name = floor === 'wood' ? pick('wood_1', 'wood_2') : floor === 'carpet' ? pick('carpet_1', 'carpet_2') : pick('boot_1', 'boot_2');
+    audio.play(name, { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
+    const loud = (player.running ? 1 : crouch ? 0.08 : 0.42) * (floor === 'carpet' ? 0.6 : floor === 'tile' ? 1.1 : 1);
+    director.noise?.(loud, player.pos);
+  }
   else if (zone === 'corridor2' || zone === 'room') audio.play(pick('carpet_1', 'carpet_2'), { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
   else if (zone === 'flooded' || zone === 'end') audio.play(pick('puddle_1', 'puddle_2', 'puddle_3'), { pos: feet(), gain: 0.7 * k, send: 0.55, ref: 1.5, rate });
   else audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.55 * k, send: 0.7, ref: 1.5, rate });
@@ -265,7 +288,7 @@ function footstep() {
 function playerEvents() {
   for (const ev of player.events) {
     if (ev === 'splash') { audio.play('splash_in', { pos: feet(), gain: 1.2, send: 0.8, ref: 2 }); fx.glitch = Math.max(fx.glitch, 0.35); }
-    if (ev === 'land') audio.play('land', { pos: feet(), gain: 0.7, send: 0.6, ref: 1.5 });
+    if (ev === 'land') { audio.play('land', { pos: feet(), gain: 0.7, send: 0.6, ref: 1.5 }); director.noise?.(0.9, player.pos); }
     if (ev === 'climb') audio.play('climb_out', { pos: feet(), gain: 0.9, send: 0.5, ref: 1.5 });
   }
   player.events.length = 0;
@@ -442,11 +465,12 @@ function tick(dt) {
     osd.draw({
       t: gameT, recording: state === 'playing', battery: fx.battery, nv: fx.nv,
       mode: state === 'rewinding' ? 'rew' : playMarker > 0 ? 'play' : 'rec',
-      prompt: state === 'playing' ? director.prompt : null,
+      prompt: state === 'playing' ? director.prompt ?? director.message : null,
     });
   }
 
   window.game?.debugCam?.(camera);
+  world.renderFeed?.(renderer, body, camera, dt);
   // the title only needs a slow, dim backdrop
   if (state === 'title' || state === 'loading') {
     titleTimer -= dt;

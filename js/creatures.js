@@ -308,3 +308,122 @@ export function createOccupant() {
     },
   };
 }
+
+// The Listener: a pale, eyeless thing on four long limbs, knees higher than its back.
+// It finds you by sound. Feet at the origin, facing +Z. Limbs are re-posed every frame.
+export function createListener() {
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc9c5ba, roughness: 0.5, emissive: 0x15130f });
+  const bruise = new THREE.MeshStandardMaterial({ color: 0x8a857a, roughness: 0.6 });
+  const hollow = new THREE.MeshBasicMaterial({ color: 0x030202 });
+  const tooth = new THREE.MeshStandardMaterial({ color: 0xe8e2cc, roughness: 0.3, emissive: 0x2a2820 });
+
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 0.62;
+  root.add(body);
+  const add = (geo, mat, parent, pos = [0, 0, 0], rot = [0, 0, 0], scale = [1, 1, 1]) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(...pos);
+    m.rotation.set(...rot);
+    m.scale.set(...scale);
+    parent.add(m);
+    return m;
+  };
+
+  add(new THREE.CapsuleGeometry(0.16, 0.85, 6, 12), skin, body, [0, 0, 0], [Math.PI / 2, 0, 0], [1.05, 1, 0.7]);
+  for (let i = 0; i < 10; i++) add(new THREE.SphereGeometry(0.028, 6, 4), bruise, body, [0, 0.105, -0.5 + i * 0.105]);
+  for (let i = 0; i < 5; i++) {
+    for (const s of [-1, 1]) add(new THREE.CapsuleGeometry(0.012, 0.18, 2, 4), bruise, body, [s * 0.11, 0.03, 0.05 + i * 0.07], [0, 0, s * 1.15]);
+  }
+  // neck and an eyeless head that is mostly mouth
+  add(new THREE.CapsuleGeometry(0.06, 0.2, 4, 8), skin, body, [0, 0.02, 0.58], [Math.PI / 2 - 0.3, 0, 0]);
+  const head = new THREE.Group();
+  head.position.set(0, 0.05, 0.78);
+  body.add(head);
+  add(new THREE.SphereGeometry(0.13, 16, 12), skin, head, [0, 0.02, 0], [0, 0, 0], [0.85, 0.72, 1.35]);
+  const mouth = add(new THREE.SphereGeometry(0.07, 12, 8), hollow, head, [0, -0.04, 0.15], [0, 0, 0], [1.1, 0.7, 0.45]);
+  const teeth = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    teeth.push(add(new THREE.ConeGeometry(0.011, 0.05, 4), tooth, head, [Math.cos(a) * 0.065, -0.04 + Math.sin(a) * 0.04, 0.17], [Math.PI / 2 - Math.sin(a) * 0.4, 0, -Math.cos(a) * 0.4]));
+  }
+
+  // limbs: unit cylinders stretched between joints each frame
+  const seg = (r) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.8, 1, 8), skin);
+    root.add(m);
+    return m;
+  };
+  const up = new THREE.Vector3(0, 1, 0);
+  const span = (m, a, b) => {
+    const d = new THREE.Vector3().subVectors(b, a);
+    m.position.copy(a).addScaledVector(d, 0.5);
+    m.scale.set(1, d.length(), 1);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+  };
+  const limbs = [
+    { s: -1, z: 0.32, front: true, off: 0 }, { s: 1, z: 0.32, front: true, off: Math.PI },
+    { s: -1, z: -0.38, front: false, off: Math.PI }, { s: 1, z: -0.38, front: false, off: 0 },
+  ].map((l) => ({ ...l, upper: seg(0.04), lower: seg(0.032), fingers: l.front ? [seg(0.008), seg(0.008), seg(0.008)] : [] }));
+
+  let phase = 0, scare = 0, look = 0;
+  const A = new THREE.Vector3(), K = new THREE.Vector3(), F = new THREE.Vector3(), tmp = new THREE.Vector3();
+  // in a dark house the scare has to be lit from somewhere: the skin itself
+  const calm = skin.emissive.clone(), lit = new THREE.Color(0xb0ab9e);
+
+  return {
+    root,
+    head,
+    // advance the crawl by how fast it moves
+    move(dt, speed) { phase += dt * (1.5 + speed * 3.2); },
+    twitch() {},
+    setScare(v) {
+      scare = v;
+      skin.emissive.copy(calm).lerp(lit, v);
+      head.scale.setScalar(1 + 0.35 * v);
+      mouth.scale.set(1.1 + 0.25 * v, 0.7 + 0.5 * v, 0.45);
+      teeth.forEach((t, i) => {
+        const a = (i / 10) * Math.PI * 2;
+        t.position.set(Math.cos(a) * 0.065 * (1 + 0.2 * v), -0.04 + Math.sin(a) * 0.04 * (1 + 0.5 * v), 0.17);
+      });
+    },
+    update(dt, t, target, lookWeight, listening = 0) {
+      look += (lookWeight - look) * (1 - Math.exp(-dt * 3));
+      const stride = 0.22;
+      // rear up for the scare
+      body.rotation.x = -0.85 * scare;
+      body.position.y = 0.62 + Math.sin(phase * 2) * 0.03 + 0.45 * scare;
+      body.rotation.z = Math.sin(phase) * 0.06;
+      // listening: sharp little head-cocks
+      const cock = listening * Math.sign(Math.sin(t * 1.7)) * 0.35 * (Math.sin(t * 6.3) > 0.6 ? 1 : 0.6);
+      let yaw = 0, pitch = 0;
+      if (target && look > 0.001) {
+        root.updateMatrixWorld(true);
+        tmp.copy(target);
+        body.worldToLocal(tmp);
+        tmp.sub(head.position);
+        yaw = THREE.MathUtils.clamp(Math.atan2(tmp.x, tmp.z), -1.2, 1.2) * look;
+        pitch = THREE.MathUtils.clamp(-Math.atan2(tmp.y, Math.hypot(tmp.x, tmp.z)), -0.9, 0.9) * look;
+      }
+      head.rotation.set(pitch, yaw, cock, 'YXZ');
+      root.updateMatrixWorld(true);
+      for (const l of limbs) {
+        const p = phase + l.off;
+        const lift = Math.max(0, Math.cos(p)) * 0.12;
+        A.set(l.s * (l.front ? 0.17 : 0.15), 0, l.z);
+        A.applyEuler(body.rotation).add(body.position);
+        F.set(l.s * 0.58, lift, l.z + (l.front ? 0.25 : -0.12) + Math.sin(p) * stride);
+        if (l.front && scare > 0) F.lerp(tmp.set(l.s * 0.35, 1.35, 0.95), scare); // arms thrown up and out
+        K.addVectors(A, F).multiplyScalar(0.5);
+        K.x += l.s * 0.18;
+        K.y = Math.max(A.y, F.y) + 0.38;
+        span(l.upper, A, K);
+        span(l.lower, K, F);
+        l.fingers.forEach((f, i) => {
+          tmp.set(F.x + l.s * (i - 1) * 0.06, F.y, F.z + 0.16 + (1 - Math.abs(i - 1)) * 0.04);
+          span(f, F, tmp);
+        });
+      }
+    },
+  };
+}

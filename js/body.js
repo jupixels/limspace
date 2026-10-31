@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-const BACK = 0.08; // the torso isn't drawn in first person, so the body can sit right under the lens
+const BACK = 0.26; // lens sits ahead of the body so the cut ends of the arms and legs face away from it
 const ARM_BONES = /^(left|right)(forearm|hand)/i;
 const LEG_BONES = /^(left|right)(upleg|leg|foot|toebase)/i;
 const LEG_FADE = [0.62, 0.72]; // bind-pose height band (m) where the thighs dissolve

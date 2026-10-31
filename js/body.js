@@ -2,7 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const HEAD_Y = 1.56; // head bone height for a ~1.75 m person
-const BACK = 0.2; // body sits slightly behind the lens so looking down shows the chest, not the inside of the hood
+// The lens sits ahead of the neck so the empty collar never comes into view;
+// the body slides further back as you look down.
+const BACK = 0.32;
+const BACK_LOOKING_DOWN = 0.2;
 
 // Keep animations in place: the controller moves the body, not the clip.
 function stripRootMotion(clip) {
@@ -83,7 +86,8 @@ export class Body {
   update(dt, player) {
     const p = player.pos;
     const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
-    this.root.position.set(p.x + sy * BACK, p.y, p.z + cy * BACK);
+    const back = BACK + BACK_LOOKING_DOWN * THREE.MathUtils.clamp(-player.pitch / 1.2, 0, 1);
+    this.root.position.set(p.x + sy * back, p.y, p.z + cy * back);
     this.root.rotation.y = player.yaw + Math.PI;
     // crouching: sink with the camera (the rig has no crouch clip)
     this.inner.position.y = player.eye - 1.62;

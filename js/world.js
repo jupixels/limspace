@@ -191,7 +191,8 @@ export function buildWorld(scene) {
     return m;
   }
 
-  function fixture(x, y, z, lum, rot = 0, len = 2.4) {
+  // Area lights look best but cost the most per pixel, so only the big hall gets them.
+  function fixture(x, y, z, lum, rot = 0, len = 2.4, area = true) {
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3.2, 3) });
     const housing = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 0.1, 0.45), M.housing);
     const panel = new THREE.Mesh(new THREE.BoxGeometry(len, 0.02, 0.35), mat);
@@ -199,12 +200,19 @@ export function buildWorld(scene) {
     panel.position.set(x, y - 0.01, z);
     housing.rotation.y = panel.rotation.y = rot;
     scene.add(housing, panel);
-    const light = new THREE.RectAreaLight(0xeafff4, lum, len, 0.35);
-    light.position.set(x, y - 0.03, z);
-    light.rotation.order = 'YXZ';
-    light.rotation.set(-Math.PI / 2, rot, 0);
+    let light;
+    if (area) {
+      light = new THREE.RectAreaLight(0xeafff4, lum, len, 0.35);
+      light.position.set(x, y - 0.03, z);
+      light.rotation.order = 'YXZ';
+      light.rotation.set(-Math.PI / 2, rot, 0);
+    } else {
+      lum *= len * 0.35 * 1.4;
+      light = new THREE.PointLight(0xeafff4, lum, 16, 2);
+      light.position.set(x, y - 0.25, z);
+    }
     scene.add(light);
-    const entry = { light, mat, base: lum, area: len * 0.35, baseColor: mat.color.clone(), pos: light.position.clone(), flicker: 0, on: true, dead: false };
+    const entry = { light, mat, base: lum, area: area ? len * 0.35 : 1, baseColor: mat.color.clone(), pos: light.position.clone(), flicker: 0, on: true, dead: false };
     lights.push(entry);
     return entry;
   }
@@ -284,8 +292,8 @@ export function buildWorld(scene) {
 
   const water = new Reflector(new THREE.PlaneGeometry(P.x * 2, P.z * 2), {
     clipBias: 0.003,
-    textureWidth: 1024,
-    textureHeight: 576,
+    textureWidth: 512,
+    textureHeight: 288,
     color: 0x12404a,
     shader: PoolWaterShader,
     multisample: 0,
@@ -395,8 +403,8 @@ export function buildWorld(scene) {
   bands(15.5, 35, 19.98, 20, corr.trim);
   bands(15.5, 32, 17, 17.02, corr.trim);
   box(15, 15.6, 2.9, 3, 17, 20, M.frame, false);
-  fixture(21, 2.98, 18.5, 9, 0, 1.6);
-  fixture(29, 2.98, 18.5, 9, 0, 1.6);
+  fixture(21, 2.98, 18.5, 9, 0, 1.6, false);
+  fixture(29, 2.98, 18.5, 9, 0, 1.6, false);
 
   // ---------- Corridor B (flooded): x[32,35] z[-5,17] ----------
   box(32, 35, -0.3, 0, -5, 17, end.wet, false);
@@ -405,8 +413,8 @@ export function buildWorld(scene) {
   box(35, 35.5, 0, 3, -5, 20.5, end.wall);
   bands(32, 32.02, -5, 17, end.trim);
   bands(34.98, 35, -5, 20, end.trim);
-  fixture(33.5, 2.98, 9, 7, Math.PI / 2, 1.6);
-  fixture(33.5, 2.98, 0, 7, Math.PI / 2, 1.6);
+  fixture(33.5, 2.98, 9, 7, Math.PI / 2, 1.6, false);
+  fixture(33.5, 2.98, 0, 7, Math.PI / 2, 1.6, false);
   for (const z of [12, 4, -2]) box(33.2, 33.8, 0, 0.004, z - 0.3, z + 0.3, M.grate, false);
 
   // ---------- End room (flooded): x[29,41] z[-17,-5] ----------
@@ -424,7 +432,7 @@ export function buildWorld(scene) {
   bands(40.98, 41, -17, -5, end.trim);
   bands(29, 34, -17.02, -17, end.trim);
   bands(36, 41, -17.02, -17, end.trim);
-  const endLight = fixture(35, 3.98, -11, 6, 0, 1.6);
+  const endLight = fixture(35, 3.98, -11, 6, 0, 1.6, false);
   endLight.unstable = true;
 
   // the doorway opens onto nothing at all
@@ -499,24 +507,31 @@ export function buildWorld(scene) {
     return F;
   }
 
-  // Bake a reflection/irradiance probe per region by rendering the scene from inside it.
-  function bakeProbes(renderer) {
+  // Bake a reflection/irradiance probe per region by rendering the scene from inside it,
+  // yielding between regions so the page stays responsive while it works.
+  async function bakeProbes(renderer, compile) {
+    const breathe = () => new Promise((r) => setTimeout(r, 0));
     const pmrem = new THREE.PMREMGenerator(renderer);
     const probes = [
       [new THREE.Vector3(0, 2.5, 4), [...Object.values(hall), M.coping, M.metal, M.paint, M.bench, M.frame, M.grate, M.lane, M.housing]],
       [new THREE.Vector3(25, 1.5, 18.5), Object.values(corr)],
       [new THREE.Vector3(35, 1.6, -9), [...Object.values(end), shallow]],
     ];
+    // A same-sized placeholder probe lets every shader compile (off the main thread where
+    // supported) in its final form; swapping in the baked probes later needs no recompile.
+    const placeholder = pmrem.fromScene(new THREE.Scene(), 0, 0.1, 1);
+    for (const [, mats] of probes) for (const m of mats) { m.envMap = placeholder.texture; m.needsUpdate = true; }
+    await compile();
     water.visible = false;
     figure.visible = false;
-    for (let pass = 0; pass < 2; pass++) {
-      for (const [p, mats] of probes) {
-        scene.position.set(-p.x, -p.y, -p.z);
-        scene.updateMatrixWorld(true);
-        const rt = pmrem.fromScene(scene, 0.01, 0.1, 80);
-        for (const m of mats) { m.envMap = rt.texture; m.needsUpdate = true; }
-      }
+    for (const [p, mats] of probes) {
+      scene.position.set(-p.x, -p.y, -p.z);
+      scene.updateMatrixWorld(true);
+      const rt = pmrem.fromScene(scene, 0.01, 0.1, 80);
+      for (const m of mats) m.envMap = rt.texture;
+      await breathe();
     }
+    placeholder.dispose();
     scene.position.set(0, 0, 0);
     scene.updateMatrixWorld(true);
     water.visible = true;

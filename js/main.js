@@ -40,7 +40,7 @@ let body = null;
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
-gtao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1, scale: 1.1, samples: 12 });
+gtao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1, scale: 1.1, samples: 8 });
 gtao.blendIntensity = 0.85;
 // the water's reflection camera must not run again inside the AO depth/normal pass
 const gtaoRender = gtao.render.bind(gtao);
@@ -51,7 +51,8 @@ gtao.render = (...args) => {
   world.water.visible = v;
 };
 composer.addPass(gtao);
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.6, 0.85));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.6, 0.85);
+composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const cam = new ShaderPass(CamcorderShader);
 cam.uniforms.tOSD.value = osd.texture;
@@ -62,14 +63,17 @@ const setResolution = () => renderer.getDrawingBufferSize(U.resolution.value);
 setResolution();
 
 let state = 'title';
-let gameT = 0, realT = 0, osdTimer = 0;
+let ready = false;
+let gameT = 0, realT = 0, osdTimer = 0, titleTimer = 0;
 const loops = {};
 const $ = (id) => document.getElementById(id);
 
-// textures, reflection probes and the body load while the title is up
+// textures, reflection probes, the body and every shader get ready while the title is up;
+// nothing is drawn until then so the GPU isn't fighting the setup work
 const prepared = (async () => {
   await world.ready;
-  world.bakeProbes(renderer);
+  const compile = () => (renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera));
+  await world.bakeProbes(renderer, compile);
   try {
     body = await new Body().load('models');
     scene.add(body.root);
@@ -77,7 +81,31 @@ const prepared = (async () => {
   } catch (err) {
     console.warn('body model unavailable', err);
   }
+  await compile();
+  ready = true;
+  if (state === 'title') $('status').textContent = 'headphones recommended';
 })();
+$('status').textContent = 'loading...';
+
+// Step quality down when frames run long: AO first, then resolution, then bloom.
+const quality = { level: 0, time: 0, frames: 0 };
+function adaptQuality(dt) {
+  quality.time += dt;
+  quality.frames++;
+  if (quality.time < 3) return;
+  const avg = quality.time / quality.frames;
+  quality.time = quality.frames = 0;
+  if (avg < 1 / 40 || quality.level >= 3) return;
+  quality.level++;
+  if (quality.level === 1) gtao.enabled = false;
+  if (quality.level === 2) {
+    renderer.setPixelRatio(PIXEL_RATIO * 0.7);
+    composer.setPixelRatio(PIXEL_RATIO * 0.7);
+    composer.setSize(innerWidth, innerHeight);
+    setResolution();
+  }
+  if (quality.level === 3) bloom.enabled = false;
+}
 
 // ---------- start / pause ----------
 const lock = () => renderer.domElement.requestPointerLock()?.catch?.(() => {});
@@ -187,6 +215,7 @@ function frame() {
 }
 
 function tick(dt) {
+  if (!ready) return;
   realT += dt;
 
   if (state === 'playing') {
@@ -251,6 +280,13 @@ function tick(dt) {
   }
 
   window.game?.debugCam?.(camera);
+  // the title only needs a slow, dim backdrop
+  if (state === 'title' || state === 'loading') {
+    titleTimer -= dt;
+    if (titleTimer > 0) return;
+    titleTimer = 1 / 12;
+  }
+  if (state === 'playing') adaptQuality(dt);
   composer.render(dt);
 }
 frame();
@@ -265,4 +301,4 @@ addEventListener('resize', () => {
   osd.resize(camera.aspect);
 });
 
-window.game = { world, player, fx, audio, director, renderer, camera, scene, composer, osd, tick, get body() { return body; } };
+window.game = { world, player, fx, audio, director, renderer, camera, scene, composer, osd, tick, quality, get body() { return body; } };

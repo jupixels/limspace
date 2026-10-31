@@ -121,3 +121,32 @@ button.link {
 }
 
 button.link:hover { opacity: 1; background: transparent; color: #9fffe0; }
+
+.tapes {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: -18px 0 26px;
+}
+
+.tapes button.tape {
+  font-size: 20px;
+  padding: 4px 12px;
+  border-width: 1px;
+  opacity: 0.7;
+}
+
+.tapes button.tape.current { opacity: 1; border-color: #9fffe0; color: #9fffe0; }
+.tapes button.tape:disabled { opacity: 0.25; cursor: default; }
+.tapes button.tape:disabled:hover { background: transparent; color: #e8e8e8; }
+
+.credits {
+  margin-top: 40px;
+  font-size: 18px;
+  line-height: 1.6;
+  opacity: 0.55;
+  letter-spacing: 0.08em;
+}
+
+.credits.hidden { display: none; }

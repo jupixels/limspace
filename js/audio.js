@@ -9,6 +9,7 @@ const FILES = [
   'shriek2', 'carpet_1', 'carpet_2', 'tv_static',
   'house_ambience', 'wood_1', 'wood_2', 'clicks', 'scramble', 'shriek3', 'breaker', 'hiss', 'floor_creak',
   'dead_buttons', 'door_open', 'clock',
+  'music_box', 'tape_end', 'splice', 'void_tone',
 ];
 
 export class AudioSys {

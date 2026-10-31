@@ -3,7 +3,7 @@ import { POOL_FLOOR, WATER_Y } from './world.js';
 
 const FIGURE_STAGES = [-36, -31, -27, -24.2];
 const BASE_TENSION = { hall: 0.05, corridor: 0.15, flooded: 0.25, end: 0.35, void: 0.6 };
-const SWIM = { chasing: 2.3, toEdge: 3.2, reach: 1.1, wakeDelay: 1.4, lookRange: 6 };
+const SWIM = { chasing: 3.0, toEdge: 3.8, reach: 1.1, wakeDelay: 1.4, lookRange: 6 };
 const END_Z = -22.5; // this far into the dark, the tape runs out
 const v = new THREE.Vector3();
 const ndc = new THREE.Vector3();

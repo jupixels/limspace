@@ -35,6 +35,14 @@ https://jupixels.github.io/limspace/?tape=3 (or finish Tape 02)
 
 A family house at night with the power out, built slightly wrong. The tape is in the VCR. The stairs go up into an attic someone has been filming from. Something blind lives here and it moves toward whatever it hears: walking is noticed, running is heard across the house, crouching is almost silent. The breaker is in the garage, and it is loud.
 
+## Tape 04: Playback
+
+https://jupixels.github.io/limspace/?tape=4 (or finish Tape 03)
+
+The tape replays pieces of the first three, spliced together: a flooded lane with the Swimmer in it, a corridor with the Occupant, a dark room with the Listener by the door. Each splice is a checkpoint. After that, the tape runs out.
+
+Finished tapes unlock on the title screen's tape shelf.
+
 ## Running locally
 
 It is a static site with no build step. Serve the folder over HTTP (ES modules don't load from `file://`):
@@ -58,6 +66,8 @@ Then open http://localhost:8123.
 - `js/events2.js`: Tape 02 director: laps, the Occupant's stare meter and steps, the exit
 - `js/house.js`: Tape 03 level: the house, its room graph, lamps, the corner camera feeding the TV
 - `js/events3.js`: Tape 03 director: hearing and hunting, the breaker, the VCR
+- `js/tape4.js`: Tape 04 level: the spliced pieces and the white leader
+- `js/events4.js`: Tape 04 director: the three gauntlets, checkpoints, the ending
 - `js/creatures.js`: the Swimmer, the Occupant and the Listener, built from primitives and posed in code
 - `audio/`: sound effects generated with ElevenLabs
 - `models/`: hazmat character generated and rigged with Meshy

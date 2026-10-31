@@ -15,13 +15,19 @@ import { buildHotel } from './hotel.js';
 import { Director2 } from './events2.js';
 import { buildHouse } from './house.js';
 import { Director3 } from './events3.js';
+import { buildTape4 } from './tape4.js';
+import { Director4 } from './events4.js';
 
 // each tape is its own page: ?tape=2 loads Tape 02
-const TAPE = [1, 2, 3].includes(+new URLSearchParams(location.search).get('tape')) ? +new URLSearchParams(location.search).get('tape') : 1;
+const TAPE_COUNT = 4;
+const asked = +new URLSearchParams(location.search).get('tape');
+const TAPE = asked >= 1 && asked <= TAPE_COUNT ? asked : 1;
+const UNLOCK_KEY = 'limspace.unlocked';
 const TAPES = {
   1: { title: 'TAPE 01 &mdash; UNLABELED', build: buildWorld, director: Director },
   2: { title: 'TAPE 02 &mdash; VACANCY', build: buildHotel, director: Director2 },
   3: { title: 'TAPE 03 &mdash; HOME', build: buildHouse, director: Director3 },
+  4: { title: 'TAPE 04 &mdash; PLAYBACK', build: buildTape4, director: Director4 },
 };
 
 // Camcorder sensors were low-res; rendering below native keeps it soft (and fast).
@@ -29,10 +35,12 @@ const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
 const REVERB = {
   hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2],
   corridor2: [0.05, 0.3], room: [0, 0.2],
+  pool4: [0.45, 0.05], hotel4: [0.05, 0.3], house4: [0.02, 0.3], leader: [0.8, 0],
   living: [0.02, 0.3], kitchen: [0.02, 0.35], garage: [0.08, 0.45], master: [0, 0.2], kid: [0, 0.2], bath: [0.03, 0.4],
 };
 const AIR_FOG = { color: new THREE.Color(0x0c1514), density: 0.016 };
 const WATER_FOG = { color: new THREE.Color(0x0a3236), density: 0.2 };
+const BLACK = new THREE.Color(0x000000);
 const DEATH = { hold: 2.1, staticAt: 1.05 }; // seconds from the catch to the hard cut, then the rewind
 const REWIND_TIME = 2.6;
 const SETTINGS_KEY = 'limspace.settings';
@@ -186,21 +194,44 @@ $('resume').addEventListener('click', lock);
 const ENDS = {
   1: { sub: 'A SECOND TAPE WAS FOUND IN THE WATER', next: '&#9654; INSERT TAPE 02', back: '&#9664;&#9664; REWIND TAPE 01' },
   2: { sub: 'THE TELEVISION IN ROOM 215 HAD ANOTHER TAPE', next: '&#9654; INSERT TAPE 03', back: '&#9664;&#9664; REWIND TAPE 02' },
-  3: { sub: 'TAPE 04 &mdash; NOT YET RECOVERED', next: '&#9664;&#9664; REWIND TAPE 03', back: '&#9664;&#9664; BACK TO TAPE 01' },
+  3: { sub: 'THE TAPE IN THE ATTIC WAS LABELLED 04', next: '&#9654; INSERT TAPE 04', back: '&#9664;&#9664; REWIND TAPE 03' },
+  4: { sub: 'ALL TAPES RECOVERED', next: '&#9664;&#9664; REWIND TAPE 04', back: '&#9664;&#9664; BACK TO TAPE 01' },
 };
+if (TAPE === TAPE_COUNT) $('credits').classList.remove('hidden');
 const END = ENDS[TAPE];
 $('endTitle').textContent = `END OF TAPE 0${TAPE}`;
 $('endSub').innerHTML = END.sub;
 $('again').innerHTML = END.next;
 $('back').innerHTML = END.back;
 $('again').addEventListener('click', () => {
-  if (TAPE < 3) location.search = `?tape=${TAPE + 1}`;
+  if (TAPE < TAPE_COUNT) location.search = `?tape=${TAPE + 1}`;
   else location.reload();
 });
 $('back').addEventListener('click', () => {
-  if (TAPE < 3) location.reload();
+  if (TAPE < TAPE_COUNT) location.reload();
   else location.search = '';
 });
+
+// ---------- tape shelf: every tape you've reached can be played from the title ----------
+let unlocked = 1;
+try { unlocked = Math.max(1, +localStorage.getItem(UNLOCK_KEY) || 1); } catch { /* storage off */ }
+unlocked = Math.min(TAPE_COUNT, Math.max(unlocked, TAPE));
+function saveUnlock(n) {
+  unlocked = Math.min(TAPE_COUNT, Math.max(unlocked, n));
+  try { localStorage.setItem(UNLOCK_KEY, String(unlocked)); } catch { /* storage off */ }
+}
+saveUnlock(unlocked);
+for (let n = 1; n <= TAPE_COUNT; n++) {
+  const b = document.createElement('button');
+  b.className = 'tape' + (n === TAPE ? ' current' : '');
+  b.innerHTML = n <= unlocked ? `TAPE 0${n}` : 'LOCKED';
+  b.disabled = n > unlocked;
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (n !== TAPE) location.search = n === 1 ? '' : `?tape=${n}`;
+  });
+  $('tapes').appendChild(b);
+}
 $('tapeTitle').innerHTML = TAPES[TAPE].title;
 
 document.addEventListener('pointerlockchange', () => {
@@ -238,9 +269,16 @@ function startAmbience() {
   } else if (TAPE === 2) {
     loops.room = audio.loop('hotel_ambience', { gain: 0.5, send: 0 });
     loops.whine = audio.loop('stare_whine', { gain: 0, send: 0 });
-  } else {
+  } else if (TAPE === 3) {
     loops.room = audio.loop('house_ambience', { gain: 0.45, send: 0 });
     loops.clock = audio.loop('clock', { pos: world.clockPos, gain: 0.5, send: 0.2, ref: 1.5 });
+  } else {
+    // each spliced piece keeps its own sound, fading in as you reach it
+    loops.pool1 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: -13 }, gain: 1, send: 0.6, ref: 4, rolloff: 1.6 });
+    loops.under = audio.loop('underwater', { gain: 0, send: 0 });
+    loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
+    loops.room = audio.loop('hotel_ambience', { pos: { x: 0, y: 1.5, z: -44 }, gain: 0.8, send: 0, ref: 5, rolloff: 1.6 });
+    loops.house = audio.loop('house_ambience', { pos: { x: 0, y: 1.2, z: -71 }, gain: 0.8, send: 0, ref: 4, rolloff: 1.6 });
   }
   loops.heart = audio.loop('heartbeat', { gain: 0, send: 0 });
   for (const l of world.lights) {
@@ -381,6 +419,7 @@ function updateSequences(dt) {
       staticSound = null;
       audio.play('eject', { gain: 0.9, send: 0 });
       audio.setMuffled(300);
+      saveUnlock(TAPE + 1);
       $('end').classList.remove('hidden');
     }
   }
@@ -420,9 +459,10 @@ function tick(dt) {
   const underwater = camera.position.y < WATER_Y && world.inPool(camera.position.x, camera.position.z);
   fx.under = underwater ? 1 : 0;
   world.update(dt, realT, underwater, camera.position);
-  const fog = underwater ? WATER_FOG : AIR_FOG;
+  const fog = underwater ? WATER_FOG : world.fogAt?.(camera.position) ?? AIR_FOG;
   scene.fog.color.copy(fog.color);
   scene.fog.density = fog.density;
+  scene.background.copy(fog.background ?? BLACK);
 
   fx.glitch = Math.max(0, fx.glitch - dt * 1.1);
   fx.nv += ((fx.nvOn ? 1 : 0) - fx.nv) * (1 - Math.exp(-dt * 12));

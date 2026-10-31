@@ -278,6 +278,7 @@ function updateSequences(dt) {
     // dragged under: the view sinks and tips, then the signal dies
     player.dip = Math.min(0.9, seqT * 0.9);
     player.tPitch += (-0.7 - player.tPitch) * Math.min(1, dt * 3);
+    director.updateLunge(dt);
     player.update(dt, gameT += dt);
     U.staticAmt.value = THREE.MathUtils.smoothstep(seqT, DEATH.staticAt, DEATH.staticAt + 0.5);
     if (!staticSound && seqT > DEATH.staticAt) staticSound = audio.play('static', { gain: 0.5, send: 0 });

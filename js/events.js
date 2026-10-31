@@ -3,7 +3,7 @@ import { POOL_FLOOR, WATER_Y } from './world.js';
 
 const FIGURE_STAGES = [-36, -31, -27, -24.2];
 const BASE_TENSION = { hall: 0.05, corridor: 0.15, flooded: 0.25, end: 0.35, void: 0.6 };
-const SWIM = { idle: 1.7, chasing: 1.7, toEdge: 2.6, reach: 1.1, wakeDelay: 1.6 };
+const SWIM = { chasing: 2.3, toEdge: 3.2, reach: 1.1, wakeDelay: 1.4, lookRange: 6 };
 const END_Z = -22.5; // this far into the dark, the tape runs out
 const v = new THREE.Vector3();
 const ndc = new THREE.Vector3();
@@ -28,6 +28,9 @@ export class Director {
     this.tookTape = false;
     this.rattled = false;
     this.swim = null; // the one-off glide teaser
+    this.lunge = null;
+    this.world.swimmerRig?.setReach(0);
+    this.world.swimmer.rotation.set(0, 0, 0);
     this.teased ??= false;
     this.hunt = null; // the Swimmer awake and hunting
     this.blackout = false;
@@ -186,7 +189,7 @@ export class Director {
         this.swim = { t: 0, z0, z1: -z0, lane };
         this.teased = true;
         s.position.set(lane, POOL_FLOOR + 0.3, z0);
-        s.rotation.set(Math.PI / 2, z0 > 0 ? Math.PI : 0, 0, 'YXZ');
+        s.rotation.set(0, z0 > 0 ? Math.PI : 0, 0, 'YXZ');
         s.visible = true;
         this.swim.h = audio.play('underwater_presence', { pos: s.position, gain: 2.4, send: 0.8, ref: 4 });
         fx.glitch = Math.max(fx.glitch, 0.4);
@@ -198,6 +201,8 @@ export class Director {
       w.t += dt;
       const k = w.t / 7.5;
       s.position.set(w.lane + Math.sin(k * 7) * 0.35, POOL_FLOOR + 0.3 + Math.sin(k * 11) * 0.06, THREE.MathUtils.lerp(w.z0, w.z1, k));
+      world.swimmerRig.swim(dt, 4);
+      world.swimmerRig.update(dt, t, camera.position, 0);
       if (w.h?.panner) audio.setPos(w.h.panner, s.position);
       if (k >= 1) {
         s.visible = false;
@@ -224,11 +229,13 @@ export class Director {
     const seen = this.onScreen(s.position) && !(fx.nv < 0.5 && dist > 14);
 
     h.delay -= dt;
+    const rig = world.swimmerRig;
     if (!seen && h.delay <= 0) {
       const speed = inWater ? SWIM.chasing : SWIM.toEdge;
       const to = target.clone().sub(pos);
       const len = to.length();
       if (len > 0.05) h.vel.lerp(to.multiplyScalar(Math.min(speed, len * 2) / len), 1 - Math.exp(-dt * 3));
+      rig.swim(dt, h.vel.length());
       h.glideIn -= dt;
       if (h.glideIn <= 0 && len > 0.5) {
         h.glideIn = 2.2 + Math.random();
@@ -236,7 +243,10 @@ export class Director {
       }
     } else {
       h.vel.multiplyScalar(Math.exp(-dt * 12)); // seen: it stops dead
+      if (seen && dist < 10 && Math.random() < dt * 0.5) rig.twitch();
     }
+    // close and watched, it turns its face up to you
+    rig.update(dt, this.t, camera.position, seen && dist < SWIM.lookRange ? 1 : 0);
     // the moment you look back and it's closer than before
     if (seen && !h.wasSeen && dist < 7) {
       fx.glitch = Math.max(fx.glitch, 0.25 + (7 - dist) * 0.05);
@@ -249,14 +259,33 @@ export class Director {
     s.position.z = pos.y;
     s.position.y = POOL_FLOOR + 0.3 + Math.sin(this.t * 1.3) * 0.04;
     if (h.vel.lengthSq() > 0.01) h.heading = Math.atan2(h.vel.x, h.vel.y);
-    s.rotation.set(Math.PI / 2, h.heading, Math.sin(this.t * 2) * 0.1, 'YXZ');
+    s.rotation.set(0, h.heading, 0, 'YXZ');
 
     this.heartbeat = THREE.MathUtils.clamp(1 - (dist - 1.5) / 8, 0, 1) * (inWater ? 1 : 0.4);
     if (inWater && dist < SWIM.reach && h.delay <= 0) {
       this.hunt = null;
       this.heartbeat = 0;
+      this.lunge = { from: s.position.clone() };
       this.onCatch();
     }
+  }
+
+  // The grab: it rears up out of its glide and throws itself at the lens.
+  updateLunge(dt) {
+    const l = this.lunge;
+    if (!l) return;
+    const { world, camera, player } = this;
+    const s = world.swimmer, rig = world.swimmerRig;
+    l.t = (l.t ?? 0) + dt;
+    const k = THREE.MathUtils.smoothstep(l.t, 0, 0.35);
+    const goal = camera.position.clone().addScaledVector(player.forward, 0.45);
+    goal.y -= 0.25;
+    s.position.lerpVectors(l.from, goal, k);
+    v.subVectors(camera.position, s.position);
+    s.rotation.set(-Math.atan2(v.y, Math.hypot(v.x, v.z)) * k, Math.atan2(v.x, v.z), 0, 'YXZ');
+    rig.setReach(k);
+    rig.swim(dt, 6);
+    rig.update(dt, this.t + l.t, camera.position, 1);
   }
 
   // Beyond the end-room doorway there is nothing. Night vision shows otherwise.

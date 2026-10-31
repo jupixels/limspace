@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { waterNormal, textTexture, clockTexture } from './textures.js';
+import { createSwimmer } from './creatures.js';
 
 export const WATER_Y = -0.25;
 export const POOL_FLOOR = -1.55;
 const POOL = { x: 6, z: 15 }; // half extents of the basin interior
-const STAIRS = { x1: -5.8, x2: -2.6, z0: 15, run: 0.8, rise: 0.3875, n: 4 };
+const STAIRS = { x1: -6, x2: -2.6, z0: 15, run: 0.8, rise: 0.3875, n: 4 };
 
 // Pool water: Reflector with rippled reflections, fresnel and see-through depth.
 const PoolWaterShader = {
@@ -277,9 +278,9 @@ export function buildWorld(scene) {
   box(15, 15.5, 3, H, 17, 20, hall.wall, false);
   bands(-15, 15, -25, -24.98, hall.trim);
   bands(-15, 15, 24.98, 25, hall.trim);
-  bands(-15, -14.98, -25, 25, hall.trim);
-  bands(14.98, 15, -25, 17, hall.trim);
-  bands(14.98, 15, 20, 25, hall.trim);
+  bands(-15, -14.98, -24.98, 24.98, hall.trim);
+  bands(14.98, 15, -24.98, 17, hall.trim);
+  bands(14.98, 15, 20, 24.98, hall.trim);
   for (const z of [-20, -12, -4, 4, 12, 20]) box(-15, 15, H - 0.45, H, z - 0.2, z + 0.2, M.paint, false);
 
   // basin: 1.3m of water over a tiled floor
@@ -290,9 +291,11 @@ export function buildWorld(scene) {
   box(-P.x, P.x, F - 0.3, 0, -P.z - 0.3, -P.z, hall.pool, false);
   box(-P.x, P.x, F - 0.3, 0, P.z, P.z + 0.3, hall.pool, false);
   for (const x of [-4.5, -1.5, 1.5, 4.5]) {
-    box(x - 0.12, x + 0.12, F, F + 0.004, -13.5, 13.5, M.lane, false);
+    // the lane under the stairs stops short of them
+    const end = x > STAIRS.x1 && x < STAIRS.x2 ? STAIRS.z0 - STAIRS.run * STAIRS.n - 0.6 : 13.5;
+    box(x - 0.12, x + 0.12, F, F + 0.004, -13.5, end, M.lane, false);
     box(x - 0.5, x + 0.5, F, F + 0.004, -13.5, -13.26, M.lane, false);
-    box(x - 0.5, x + 0.5, F, F + 0.004, 13.26, 13.5, M.lane, false);
+    box(x - 0.5, x + 0.5, F, F + 0.004, end - 0.24, end, M.lane, false);
     box(x - 0.12, x + 0.12, -1.1, -0.35, -P.z + 0.001, -P.z + 0.006, M.lane, false);
   }
   box(-0.4, 0.4, F, F + 0.006, -0.4, 0.4, M.lane, false);
@@ -320,12 +323,18 @@ export function buildWorld(scene) {
   const S = STAIRS;
   for (let i = 0; i < S.n; i++) {
     box(S.x1, S.x2, F, -S.rise * (i + 1), S.z0 - S.run * (i + 1), S.z0 - S.run * i, hall.pool, false);
-    box(S.x1, S.x2, -S.rise * (i + 1) - 0.004, -S.rise * (i + 1) + 0.002, S.z0 - S.run * (i + 1), S.z0 - S.run * (i + 1) + 0.06, M.lane, false);
+    // contrast strip sits on the tread, set back from the riser so no faces coincide
+    const tread = -S.rise * (i + 1), front = S.z0 - S.run * (i + 1);
+    box(S.x1 + 0.02, S.x2 - 0.02, tread, tread + 0.003, front + 0.01, front + 0.07, M.lane, false);
   }
-  for (const x of [S.x1 + 0.15, S.x2 - 0.15]) {
+  // handrails: over the deck, down along the steps, then a post onto the third tread
+  const railEnd = S.z0 - S.run * 2.6;
+  for (const x of [S.x1 + 0.25, S.x2 - 0.15]) {
     const top = new THREE.Vector3(x, 0.95, S.z0 + 0.5);
+    const low = new THREE.Vector3(x, -0.35, railEnd);
     rod(new THREE.Vector3(x, 0, S.z0 + 0.5), top, 0.03, M.metal);
-    rod(top, new THREE.Vector3(x, -0.6, S.z0 - S.run * S.n + 0.4), 0.03, M.metal);
+    rod(top, low, 0.03, M.metal);
+    rod(low, new THREE.Vector3(x, -S.rise * 3, railEnd), 0.03, M.metal);
   }
 
   const water = new Reflector(new THREE.PlaneGeometry(P.x * 2, P.z * 2), {
@@ -444,8 +453,8 @@ export function buildWorld(scene) {
   // ---------- Corridor A (dry): x[15,35] z[17,20] ----------
   region = 'corridor';
   box(15, 35, -0.3, 0, 17, 20, corr.floor, false);
-  box(15, 35, 3, 3.3, 17, 20, corr.ceiling, false);
-  box(15, 35.5, 0, 3, 20, 20.5, corr.wall);
+  box(15.5, 35, 3, 3.3, 17, 20, corr.ceiling, false);
+  box(15.5, 35.5, 0, 3, 20, 20.5, corr.wall);
   box(15.5, 32, 0, 3, 16.5, 17, corr.wall);
   bands(15.5, 35, 19.98, 20, corr.trim);
   bands(15.5, 32, 17, 17.02, corr.trim);
@@ -455,11 +464,11 @@ export function buildWorld(scene) {
 
   // ---------- Corridor B (flooded): x[32,35] z[-5,17] ----------
   box(32, 35, -0.3, 0, -5, 17, end.wet, false);
-  box(32, 35, 3, 3.3, -5, 17, end.ceiling, false);
-  box(31.5, 32, 0, 3, -5, 17, end.wall);
-  box(35, 35.5, 0, 3, -5, 20.5, end.wall);
-  bands(32, 32.02, -5, 17, end.trim);
-  bands(34.98, 35, -5, 20, end.trim);
+  box(32, 35, 3, 3.3, -4.5, 17, end.ceiling, false);
+  box(31.5, 32, 0, 3, -4.5, 17, end.wall);
+  box(35, 35.5, 0, 3, -4.5, 20.5, end.wall);
+  bands(32, 32.02, -4.5, 17, end.trim);
+  bands(34.98, 35, -4.5, 19.98, end.trim);
   fixture(33.5, 2.98, 9, 7, Math.PI / 2, 1.6, false);
   fixture(33.5, 2.98, 0, 7, Math.PI / 2, 1.6, false);
   for (const z of [12, 4, -2]) box(33.2, 33.8, 0, 0.004, z - 0.3, z + 0.3, M.grate, false);
@@ -516,11 +525,8 @@ export function buildWorld(scene) {
   scene.add(cassette);
 
   // ---------- Inhabitants ----------
-  const swimmer = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5, 3.2, 6, 12),
-    new THREE.MeshBasicMaterial({ color: 0x031412, fog: false }));
-  swimmer.rotation.x = Math.PI / 2;
-  swimmer.scale.set(1.1, 1, 0.5);
+  const swimmerRig = createSwimmer();
+  const swimmer = swimmerRig.root;
   swimmer.position.set(2.2, F + 0.3, -14);
   swimmer.visible = false;
   scene.add(swimmer);
@@ -640,7 +646,7 @@ export function buildWorld(scene) {
 
   return {
     colliders, lights, zoneAt, groundAt, inPool, update, reset, swimmer, figure, water, ready, bakeProbes,
-    shutter, cassette,
+    shutter, cassette, swimmerRig,
     spawn: { pos: new THREE.Vector3(0, 0, 22), yaw: 0 },
     endLight,
   };

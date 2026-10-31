@@ -29,18 +29,20 @@ export class Player {
     this.dip = 0;
     this.climb = null;
     this.locked = false;
+    this.frozen = false; // no input or physics (caught, rewinding)
+    this.sensitivity = 1;
     this.forward = new THREE.Vector3();
     this.events = [];
 
     addEventListener('keydown', (e) => {
       this.keys.add(e.code);
-      if (e.code === 'Space' && !e.repeat) this.jumpQueued = true;
+      if (e.code === 'Space' && !e.repeat && !this.frozen) this.jumpQueued = true;
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
-      const s = 0.0021 / this.zoom;
+      if (!this.locked || this.frozen) return;
+      const s = 0.0021 * this.sensitivity / this.zoom;
       this.tYaw -= e.movementX * s;
       this.tPitch = THREE.MathUtils.clamp(this.tPitch - e.movementY * s, -0.95, 1.35); // can't look straight down
     });
@@ -48,6 +50,18 @@ export class Player {
       if (!this.locked) return;
       this.tZoom = THREE.MathUtils.clamp(this.tZoom * (e.deltaY > 0 ? 0.85 : 1.18), 1, 6);
     }, { passive: true });
+  }
+
+  // Put the player somewhere directly (checkpoints, tape rewind).
+  place(x, y, z, yaw, pitch = 0) {
+    this.pos.set(x, y, z);
+    this.yaw = this.tYaw = yaw;
+    this.pitch = this.tPitch = pitch;
+    this.vel.set(0, 0, 0);
+    this.vy = 0;
+    this.grounded = true;
+    this.climb = null;
+    this.camY = y + this.eye;
   }
 
   // Highest floor under the player's footprint.
@@ -65,7 +79,7 @@ export class Player {
     const p = this.pos;
     for (let iter = 0; iter < 2; iter++) {
       for (const b of this.colliders) {
-        if (b.maxY < p.y + 0.2 || b.minY > p.y + 1.7) continue;
+        if (b.off || b.maxY < p.y + 0.2 || b.minY > p.y + 1.7) continue;
         const cx = THREE.MathUtils.clamp(p.x, b.minX, b.maxX);
         const cz = THREE.MathUtils.clamp(p.z, b.minZ, b.maxZ);
         const dx = p.x - cx, dz = p.z - cz;
@@ -118,7 +132,10 @@ export class Player {
     const p = this.pos;
     let stepped = false;
 
-    if (this.climb) {
+    if (this.frozen) {
+      this.vel.set(0, 0, 0);
+      this.jumpQueued = false;
+    } else if (this.climb) {
       const c = this.climb;
       c.t += dt / 1.1;
       const u = Math.min(c.t, 1);

@@ -14,6 +14,9 @@ export const CamcorderShader = {
     fade: { value: 1 },
     paused: { value: 0 },
     underwater: { value: 0 },
+    staticAmt: { value: 0 },
+    rewind: { value: 0 },
+    fxAmt: { value: 1 },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -25,7 +28,7 @@ export const CamcorderShader = {
     uniform sampler2D tDiffuse;
     uniform sampler2D tOSD;
     uniform vec2 resolution;
-    uniform float time, glitch, tension, noiseAmt, nv, fade, paused, underwater;
+    uniform float time, glitch, tension, noiseAmt, nv, fade, paused, underwater, staticAmt, rewind, fxAmt;
     varying vec2 vUv;
 
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -46,16 +49,16 @@ export const CamcorderShader = {
       vec2 uv = vUv;
       float frame = floor(time * 30.0);
       float line = floor(uv.y * 240.0);
-      float unrest = tension + glitch + paused * 0.6;
+      float unrest = tension + glitch + paused * 0.6 + rewind;
 
       // tape warble and per-line jitter
-      uv.x += sin(uv.y * 9.0 + time * 1.7) * 0.0006 * (1.0 + unrest * 4.0);
-      uv.x += (hash(vec2(line, frame)) - 0.5) * 0.0005 * (1.0 + unrest * 6.0);
+      uv.x += sin(uv.y * 9.0 + time * 1.7) * 0.0006 * (fxAmt + unrest * 4.0);
+      uv.x += (hash(vec2(line, frame)) - 0.5) * 0.0005 * (fxAmt + unrest * 6.0);
 
       // tracking band rolling up the frame
       float bandY = fract(-time * 0.08);
       float band = 1.0 - smoothstep(0.0, 0.03 + unrest * 0.03, abs(uv.y - bandY));
-      band *= 0.08 + unrest * 1.2;
+      band *= 0.08 * fxAmt + unrest * 1.2;
       uv.x += band * (hash(vec2(line, frame + 3.0)) - 0.5) * 0.03;
 
       // block displacement on glitches
@@ -63,9 +66,11 @@ export const CamcorderShader = {
       float gh = hash(vec2(blk, floor(time * 14.0)));
       if (gh < glitch * 0.45) uv.x += (hash(vec2(blk, frame)) - 0.5) * 0.16 * glitch;
       if (paused > 0.5) uv.y += (hash(vec2(frame, 1.0)) - 0.5) * 0.004;
+      // rewind: the picture skews and tears as the tape runs backwards
+      uv.x += rewind * (sin(uv.y * 4.0 - time * 30.0) * 0.02 + (hash(vec2(line, frame + 7.0)) - 0.5) * 0.03);
       uv += underwater * vec2(sin(uv.y * 18.0 + time * 2.1), cos(uv.x * 14.0 + time * 1.7)) * 0.005;
 
-      vec2 duv = barrel(uv, 0.14);
+      vec2 duv = barrel(uv, 0.14 * fxAmt);
       vec2 dir = duv - 0.5;
       float r = length(dir);
 
@@ -79,11 +84,11 @@ export const CamcorderShader = {
         vec2 o = vec2(float(i) * 1.5 * px + 1.5 * px, 0.0);
         chroma += rgb2yiq(texture2D(tDiffuse, duv - o).rgb).yz;
       }
-      yiq.yz = chroma / 6.0 * 0.95;
+      yiq.yz = mix(yiq.yz, chroma / 6.0 * 0.95, min(fxAmt, 1.0));
       vec3 col = yiq2rgb(yiq);
 
       // radial chromatic aberration
-      float ca = 0.001 + r * 0.004 + glitch * 0.012;
+      float ca = (0.001 + r * 0.004) * fxAmt + glitch * 0.012;
       col.r = mix(col.r, texture2D(tDiffuse, duv + dir * ca).r, 0.7);
       col.b = mix(col.b, texture2D(tDiffuse, duv - dir * ca).b, 0.7);
 
@@ -106,15 +111,24 @@ export const CamcorderShader = {
       col += band * (hash(vec2(vUv.x * 300.0, frame)) - 0.5) * 0.25;
 
       // tape dropouts: brief white streaks
-      float drop = step(0.9995 - glitch * 0.02 - tension * 0.003, hash(vec2(line, frame)));
+      float drop = step(0.9995 - glitch * 0.02 - tension * 0.0012, hash(vec2(line, frame)));
       drop *= step(hash(vec2(floor(vUv.x * 24.0), line + frame)), 0.35);
       col += drop * 0.7;
 
       // scanlines
-      col *= 0.95 + 0.05 * sin(vUv.y * resolution.y * 1.5708);
+      col *= 1.0 - 0.05 * fxAmt + 0.05 * fxAmt * sin(vUv.y * resolution.y * 1.5708);
 
       // vignette
-      col *= 1.0 - smoothstep(0.35, 0.8, r) * 0.5;
+      col *= 1.0 - smoothstep(0.35, 0.8, r) * 0.5 * min(fxAmt, 1.4);
+
+      // rewinding: washed out, with bright bars racing down the frame
+      col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), rewind * 0.6);
+      col += rewind * step(0.94, fract(vUv.y * 3.0 + time * 5.0)) * 0.5;
+
+      // dead signal: snow with rolling dark bars
+      float snow = hash(vUv * resolution + vec2(frame * 13.1, frame * 7.7));
+      float roll = 0.75 + 0.25 * sin(vUv.y * 6.0 + time * 9.0);
+      col = mix(col, vec3(snow * roll), staticAmt);
 
       // viewfinder overlay (electronic, so no lens distortion, but still on tape)
       vec4 osd = texture2D(tOSD, uv);
@@ -160,8 +174,12 @@ export class OSD {
     g.font = '26px VT323, monospace';
     g.textBaseline = 'top';
 
-    // a small blinking dot is all that's left of the viewfinder
-    if (s.recording && Math.floor(s.t * 1.2) % 2 === 0) {
+    // a small blinking dot is all that's left of the viewfinder, except while the tape moves
+    if (s.mode === 'rew' || s.mode === 'play') {
+      g.font = '34px VT323, monospace';
+      this.text(s.mode === 'rew' ? '◀◀ REW' : 'PLAY ▶', m - 8, m - 16);
+      g.font = '26px VT323, monospace';
+    } else if (s.recording && Math.floor(s.t * 1.2) % 2 === 0) {
       g.fillStyle = 'rgba(0,0,0,0.6)';
       g.beginPath(); g.arc(m + 1, m + 1, 7, 0, 6.2832); g.fill();
       g.fillStyle = '#e8232a';
@@ -179,6 +197,7 @@ export class OSD {
       if (!lowBlink) g.fillRect(bx + 3, by + 3, 28 * s.battery / 100, 9);
       this.text('IR', bx - 10, by - 4, 'right', '#d6ffd0');
     }
+    if (s.prompt) this.text(s.prompt, W / 2, H * 0.62, 'center', 'rgba(242,242,242,0.85)');
     this.texture.needsUpdate = true;
   }
 }

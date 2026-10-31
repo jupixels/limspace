@@ -17,6 +17,9 @@ const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
 const REVERB = { hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2] };
 const AIR_FOG = { color: new THREE.Color(0x0c1514), density: 0.016 };
 const WATER_FOG = { color: new THREE.Color(0x0a3236), density: 0.2 };
+const DEATH = { hold: 1.8, staticAt: 0.6 }; // seconds from the catch to the rewind
+const REWIND_TIME = 2.6;
+const SETTINGS_KEY = 'limspace.settings';
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(PIXEL_RATIO);
@@ -64,9 +67,13 @@ const U = cam.uniforms;
 const setResolution = () => renderer.getDrawingBufferSize(U.resolution.value);
 setResolution();
 
+// title -> loading -> playing <-> paused; playing -> dying -> rewinding -> playing; playing -> ending -> ended
 let state = 'title';
 let ready = false;
 let gameT = 0, realT = 0, osdTimer = 0, titleTimer = 0;
+let seqT = 0, playMarker = 0, staticSound = null;
+const history = []; // where you have been since the checkpoint, for the rewind
+let historyT = 0;
 const loops = {};
 const $ = (id) => document.getElementById(id);
 
@@ -109,6 +116,25 @@ function adaptQuality(dt) {
   if (quality.level === 3) bloom.enabled = false;
 }
 
+// ---------- settings (kept in this browser only) ----------
+const settings = { sens: 1, fx: 1, vol: 1 };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); } catch { /* private mode etc. */ }
+function applySettings() {
+  player.sensitivity = settings.sens;
+  U.fxAmt.value = settings.fx;
+  if (audio.master) audio.master.gain.value = 0.9 * settings.vol;
+}
+for (const [id, key] of [['sens', 'sens'], ['fxamt', 'fx'], ['vol', 'vol']]) {
+  const el = $(id);
+  el.value = settings[key];
+  el.addEventListener('input', () => {
+    settings[key] = parseFloat(el.value);
+    applySettings();
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+  });
+}
+applySettings();
+
 // ---------- start / pause ----------
 const lock = () => renderer.domElement.requestPointerLock()?.catch?.(() => {});
 
@@ -128,6 +154,8 @@ $('play').addEventListener('click', async (e) => {
     return;
   }
   startAmbience();
+  applySettings();
+  resetHistory();
   $('title').classList.add('hidden');
   state = 'playing';
   fx.glitch = 1.2;
@@ -135,6 +163,9 @@ $('play').addEventListener('click', async (e) => {
 });
 
 $('pause').addEventListener('click', lock);
+$('pausePanel').addEventListener('click', (e) => e.stopPropagation());
+$('resume').addEventListener('click', lock);
+$('again').addEventListener('click', () => location.reload());
 
 document.addEventListener('pointerlockchange', () => {
   player.locked = document.pointerLockElement === renderer.domElement;
@@ -150,6 +181,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 addEventListener('keydown', (e) => {
+  if (state === 'playing' && e.code === 'KeyE' && !e.repeat) director.interact();
   if (state !== 'playing' || e.code !== 'KeyN' || e.repeat) return;
   if (!fx.nvOn && fx.battery <= 0) return;
   fx.nvOn = !fx.nvOn;
@@ -166,6 +198,7 @@ function startAmbience() {
   loops.pool2 = audio.loop('pool_ambience', { pos: { x: 0, y: -0.2, z: 8 }, gain: 1.0, send: 0.6, ref: 5, rate: 0.94 });
   loops.under = audio.loop('underwater', { gain: 0, send: 0 });
   loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
+  loops.heart = audio.loop('heartbeat', { gain: 0, send: 0 });
   for (const l of world.lights) {
     l.hum = audio.loop('fluorescent_hum', { pos: l.pos, gain: 0.22, send: 0.15, ref: 1.5, rolloff: 1.6, rate: 0.97 + Math.random() * 0.06 });
   }
@@ -207,6 +240,93 @@ function playerEvents() {
   player.events.length = 0;
 }
 
+// ---------- caught, rewind, end of tape ----------
+director.onCatch = () => {
+  state = 'dying';
+  seqT = 0;
+  player.frozen = true;
+  fx.glitch = 1.5;
+  fx.tension = 1;
+  audio.play('catch', { gain: 1.5, send: 0.5 });
+};
+
+director.onEnd = () => {
+  state = 'ending';
+  seqT = 0;
+  player.frozen = true;
+  document.exitPointerLock?.();
+  audio.play('stinger', { gain: 0.8, send: 0.6, rate: 0.8 });
+};
+
+function resetHistory() {
+  history.length = 0;
+  const p = player.pos;
+  history.push({ x: p.x, y: p.y, z: p.z, yaw: player.yaw, pitch: player.pitch });
+}
+
+function recordHistory(dt) {
+  historyT -= dt;
+  if (historyT > 0) return;
+  historyT = 0.1;
+  history.push({ x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch });
+  if (history.length > 3000) history.splice(1, 1); // keep the checkpoint itself
+}
+
+function updateSequences(dt) {
+  seqT += dt;
+  if (state === 'dying') {
+    // dragged under: the view sinks and tips, then the signal dies
+    player.dip = Math.min(0.9, seqT * 0.9);
+    player.tPitch += (-0.7 - player.tPitch) * Math.min(1, dt * 3);
+    player.update(dt, gameT += dt);
+    U.staticAmt.value = THREE.MathUtils.smoothstep(seqT, DEATH.staticAt, DEATH.staticAt + 0.5);
+    if (!staticSound && seqT > DEATH.staticAt) staticSound = audio.play('static', { gain: 0.5, send: 0 });
+    if (seqT >= DEATH.hold) {
+      state = 'rewinding';
+      seqT = 0;
+      audio.play('rewind', { gain: 0.9, send: 0 });
+    }
+  } else if (state === 'rewinding') {
+    // the tape literally runs back along the path you took
+    const u = Math.min(seqT / REWIND_TIME, 1);
+    const f = (1 - u * u * (3 - 2 * u)) * (history.length - 1);
+    const i = Math.floor(f), k = f - i;
+    const a = history[i], b = history[Math.min(history.length - 1, i + 1)];
+    player.place(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k, a.yaw + (b.yaw - a.yaw) * k, a.pitch + (b.pitch - a.pitch) * k);
+    player.dip = 0;
+    player.update(dt, gameT);
+    U.staticAmt.value = Math.max(0, 1 - seqT / 0.35);
+    U.rewind.value = 1;
+    if (staticSound && seqT > 0.35) { staticSound.src.stop(); staticSound = null; }
+    if (u >= 1) {
+      world.reset();
+      director.reset();
+      const sp = world.spawn;
+      player.place(sp.pos.x, sp.pos.y, sp.pos.z, sp.yaw);
+      player.frozen = false;
+      fx.nvOn = false;
+      fx.glitch = 0.8;
+      fx.tension = 0.2;
+      U.rewind.value = 0;
+      playMarker = 2.5;
+      resetHistory();
+      state = player.locked ? 'playing' : 'paused';
+      if (state === 'paused') $('pause').classList.remove('hidden');
+    }
+  } else if (state === 'ending') {
+    U.staticAmt.value = THREE.MathUtils.smoothstep(seqT, 0.8, 2.2);
+    if (!staticSound && seqT > 0.9) staticSound = audio.play('static', { gain: 0.45, send: 0 });
+    if (seqT > 2.8) {
+      state = 'ended';
+      staticSound?.src.stop();
+      staticSound = null;
+      audio.play('eject', { gain: 0.9, send: 0 });
+      audio.setMuffled(300);
+      $('end').classList.remove('hidden');
+    }
+  }
+}
+
 // ---------- main loop ----------
 const clock = new THREE.Clock();
 function frame() {
@@ -223,6 +343,8 @@ function tick(dt) {
     if (player.update(dt, gameT)) footstep();
     playerEvents();
     director.update(dt);
+    recordHistory(dt);
+    playMarker = Math.max(0, playMarker - dt);
     if (fx.nvOn) {
       fx.battery = Math.max(0, fx.battery - dt * 0.35);
       if (fx.battery <= 0) { fx.nvOn = false; fx.glitch = 0.6; }
@@ -230,8 +352,10 @@ function tick(dt) {
     fx.fade = Math.max(0, fx.fade - dt * 0.6);
   } else if (state === 'title' || state === 'loading') {
     player.update(dt, realT);
+  } else if (state === 'dying' || state === 'rewinding' || state === 'ending') {
+    updateSequences(dt);
   }
-  if (body) body.update(state === 'playing' ? dt : 0, player);
+  if (body) body.update(state === 'playing' || state === 'rewinding' ? dt : 0, player);
 
   const underwater = camera.position.y < WATER_Y && world.inPool(camera.position.x, camera.position.z);
   fx.under = underwater ? 1 : 0;
@@ -251,12 +375,13 @@ function tick(dt) {
     const zone = world.zoneAt(player.pos.x, player.pos.z);
     audio.setReverb(...(REVERB[zone] ?? REVERB.corridor));
     audio.setZoomMotor(state === 'playing' ? (player.tZoom - player.zoom) * 3 : 0);
-    audio.setMuffled(state === 'paused' ? 500 : underwater ? 650 : 20000);
+    if (state !== 'ended') audio.setMuffled(state === 'paused' ? 500 : underwater ? 650 : 20000);
     const set = (h, v, tc = 0.2) => h && audio.ramp(h.gain.gain, v, tc);
     set(loops.drone, Math.max(0, fx.tension - 0.1) * 0.9, 0.8);
     set(loops.hiss, 0.045 + fx.nv * 0.04 + fx.glitch * 0.05, 0.1);
     set(loops.under, underwater ? 0.9 : 0, 0.08);
     set(loops.wade, player.wading && !underwater ? Math.min(player.speed / 1.05, 1) * 0.5 : 0, 0.15);
+    set(loops.heart, state === 'playing' ? director.heartbeat * 0.8 : 0, 0.4);
     for (const l of world.lights) set(l.hum, l.on ? 0.22 : 0, 0.01);
   }
 
@@ -267,12 +392,17 @@ function tick(dt) {
   U.underwater.value = fx.under;
   U.fade.value = state === 'playing' || state === 'paused' ? fx.fade : 0.55;
   U.paused.value = state === 'paused' ? 1 : 0;
-  U.noiseAmt.value = 0.03 + Math.max(0, fx.exposure - 1) * 0.03 + fx.tension * 0.04;
+  U.noiseAmt.value = (0.03 + Math.max(0, fx.exposure - 1) * 0.03) * settings.fx + fx.tension * 0.04;
+  if (state === 'playing' || state === 'paused') U.staticAmt.value = 0;
 
   osdTimer -= dt;
   if (osdTimer <= 0 && state !== 'title') {
     osdTimer = 1 / 15;
-    osd.draw({ t: gameT, recording: state === 'playing', battery: fx.battery, nv: fx.nv });
+    osd.draw({
+      t: gameT, recording: state === 'playing', battery: fx.battery, nv: fx.nv,
+      mode: state === 'rewinding' ? 'rew' : playMarker > 0 ? 'play' : 'rec',
+      prompt: state === 'playing' ? director.prompt : null,
+    });
   }
 
   window.game?.debugCam?.(camera);
@@ -283,6 +413,7 @@ function tick(dt) {
     titleTimer = 1 / 12;
   }
   if (state === 'playing') adaptQuality(dt);
+  if (state === 'ended') return;
   composer.render(dt);
 }
 frame();

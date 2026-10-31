@@ -1,25 +1,44 @@
 import * as THREE from 'three';
-import { POOL_FLOOR } from './world.js';
+import { POOL_FLOOR, WATER_Y } from './world.js';
 
-const FIGURE_STAGES = [-34, -28, -23, -19.6];
-const BASE_TENSION = { hall: 0.05, corridor: 0.15, flooded: 0.25, end: 0.35, void: 0.55 };
+const FIGURE_STAGES = [-36, -31, -27, -24.2];
+const BASE_TENSION = { hall: 0.05, corridor: 0.15, flooded: 0.25, end: 0.35, void: 0.6 };
+const SWIM = { idle: 1.7, chasing: 1.7, toEdge: 2.6, reach: 1.1, wakeDelay: 1.6 };
+const END_Z = -22.5; // this far into the dark, the tape runs out
 const v = new THREE.Vector3();
+const ndc = new THREE.Vector3();
 
-// Scripted and random scares for tape segment 1.
+// Paces Tape 01: arrive, find the shutter locked, take the tape from the pool, get out of the
+// water before the Swimmer reaches you, then walk on into the dark.
 export class Director {
   constructor({ world, audio, player, fx, camera }) {
     Object.assign(this, { world, audio, player, fx, camera });
+    this.onCatch = () => {};
+    this.onEnd = () => {};
+    this.reset();
+  }
+
+  // Everything that a rewind undoes. Once-per-tape moments (the distant door) stay done.
+  reset() {
     this.t = 0;
     this.nextDrip = 4;
-    this.nextFlicker = 18;
+    this.nextFlicker = 22;
     this.nextGlitch = 50;
-    this.doorDone = false;
-    this.swim = null;
-    this.swimDone = false;
+    this.doorDone ??= false;
+    this.tookTape = false;
+    this.rattled = false;
+    this.swim = null; // the one-off glide teaser
+    this.teased ??= false;
+    this.hunt = null; // the Swimmer awake and hunting
+    this.blackout = false;
+    this.splashDone = false;
+    this.ended = false;
     this.figStage = -1;
     this.figSeen = false;
     this.finale = 0;
     this.prevNv = false;
+    this.prompt = null;
+    this.heartbeat = 0;
   }
 
   looking(target, cos) {
@@ -27,9 +46,50 @@ export class Director {
     return v.dot(this.player.forward) > cos;
   }
 
+  // On screen, roughly: inside the middle of the frame and not too far off.
+  onScreen(p, margin = 0.85) {
+    ndc.copy(p).project(this.camera);
+    return ndc.z < 1 && Math.abs(ndc.x) < margin && Math.abs(ndc.y) < margin && p.distanceTo(this.camera.position) < 24;
+  }
+
   flick(l, dur) {
     l.flicker = dur;
     this.audio.play('light_flicker', { pos: l.pos, gain: 0.9, send: 0.4, rate: 0.9 + Math.random() * 0.2 });
+  }
+
+  // Called when E is pressed.
+  interact() {
+    const { world, audio, fx, player } = this;
+    if (this.canTake === 'take') {
+      this.tookTape = true;
+      world.cassette.visible = false;
+      audio.play('pickup', { pos: world.cassette.position, gain: 1.2, send: 0.4 });
+      fx.glitch = Math.max(fx.glitch, 0.3);
+      this.wake();
+    } else if (this.nearShutter && !world.shutter.opening) {
+      audio.play('shutter_rattle', { pos: world.shutter.pos, gain: 1.1, send: 0.7 });
+      this.rattled = true;
+      player.dip = Math.max(player.dip, 0.04);
+    }
+  }
+
+  // Taking the tape opens the way out and wakes what lives in the water.
+  wake() {
+    const { world, audio, fx, camera } = this;
+    world.shutter.opening = true;
+    audio.play('shutter_open', { pos: world.shutter.pos, gain: 1.6, send: 1.0, ref: 4 });
+    audio.play('stinger', { gain: 0.9, send: 0.5 });
+    fx.tension = Math.max(fx.tension, 0.9);
+    fx.glitch = Math.max(fx.glitch, 0.8);
+    for (const l of world.lights) if (l.region === 'hall') l.flicker = 0.8 + Math.random() * 1.2;
+    // it surfaces at whichever end of the pool is further from you
+    const s = world.swimmer;
+    const z0 = camera.position.z > 0 ? -13 : 13;
+    s.position.set(camera.position.x > 0 ? -3 : 3, POOL_FLOOR + 0.3, z0);
+    s.visible = true;
+    this.swim = null;
+    this.hunt = { delay: SWIM.wakeDelay, vel: new THREE.Vector2(), heading: z0 > 0 ? Math.PI : 0, glideIn: 0, wasSeen: true };
+    audio.play('splash_far', { pos: s.position, gain: 1.4, send: 0.9, ref: 3 });
   }
 
   update(dt) {
@@ -41,7 +101,7 @@ export class Director {
     if (t > this.nextDrip) {
       this.nextDrip = t + 3 + Math.random() * 7;
       const pos = zone === 'hall'
-        ? { x: (Math.random() - 0.5) * 11, y: -0.25, z: (Math.random() - 0.5) * 28 }
+        ? { x: (Math.random() - 0.5) * 11, y: WATER_Y, z: (Math.random() - 0.5) * 28 }
         : { x: p.x + (Math.random() - 0.5) * 8, y: 0.1, z: p.z + (Math.random() - 0.5) * 8 };
       audio.play('drip', { pos, gain: 0.8, send: 0.9, rate: 0.8 + Math.random() * 0.35 });
     }
@@ -63,34 +123,72 @@ export class Director {
     }
 
     // something far away in the building closes a door
-    if (!this.doorDone && t > 38) {
+    if (!this.doorDone && (t > 40 || this.rattled)) {
       this.doorDone = true;
-      audio.play('distant_door', { pos: { x: -48, y: 3, z: -35 }, gain: 2.2, send: 1.2, ref: 8, rolloff: 0.6 });
+      audio.play('distant_door', { pos: { x: -48, y: 3, z: -35 }, gain: 2.2, send: 1.2, ref: 8, rolloff: 0.6, delay: this.rattled ? 1.2 : 0 });
       fx.tension += 0.25;
     }
 
-    this.updateSwimmer(dt, t, zone);
+    this.updatePrompt();
+    this.updateTeaser(dt, t, zone);
+    this.updateHunt(dt);
+
+    // leaving the hall with the tape: the lights behind you go out, bank by bank
+    if (this.tookTape && !this.blackout && zone === 'corridor' && p.x > 18) {
+      this.blackout = true;
+      audio.play('lights_off', { pos: { x: 8, y: 6, z: 10 }, gain: 1.6, send: 1.0, ref: 6 });
+      fx.glitch = Math.max(fx.glitch, 0.4);
+      world.lights.filter((l) => l.region === 'hall').forEach((l, i) => setTimeout(() => { l.dead = true; }, 250 + i * 180));
+    }
+
+    // halfway down the flooded corridor, something gets into the water behind you
+    if (this.blackout && !this.splashDone && zone === 'flooded' && p.z < 6) {
+      this.splashDone = true;
+      audio.play('splash_far', { pos: { x: 33.5, y: 0.2, z: 17 }, gain: 2, send: 1.0, ref: 4 });
+      fx.tension = Math.max(fx.tension, 0.75);
+    }
+
     this.updateFigure(dt, zone);
 
-    const base = BASE_TENSION[zone] ?? 0.1;
+    if (!this.ended && zone === 'void' && p.z < END_Z) {
+      this.ended = true;
+      this.onEnd();
+    }
+
+    const base = (BASE_TENSION[zone] ?? 0.1) + (this.hunt ? 0.1 + this.heartbeat * 0.3 : 0);
     fx.tension += (base - fx.tension) * (1 - Math.exp(-dt * 0.25));
   }
 
-  // A long dark shape glides along the bottom of the pool, once.
-  updateSwimmer(dt, t, zone) {
+  updatePrompt() {
+    const { world, player, camera } = this;
+    const c = world.cassette.position;
+    this.canTake = null;
+    this.nearShutter = false;
+    this.prompt = null;
+    if (!this.tookTape && world.inPool(player.pos.x, player.pos.z) && Math.hypot(player.pos.x - c.x, player.pos.z - c.z) < 1.3) {
+      this.canTake = camera.position.y < WATER_Y + 0.1 ? 'take' : 'duck';
+      this.prompt = this.canTake === 'take' ? '[E] take' : '[C] duck';
+    } else if (!world.shutter.opening && camera.position.distanceTo(world.shutter.pos) < 2.4 && this.looking(world.shutter.pos, 0.6)) {
+      this.nearShutter = true;
+      this.prompt = '[E]';
+    }
+  }
+
+  // Before you go near the tape, a long dark shape glides along the pool floor, once.
+  updateTeaser(dt, t, zone) {
     const { world, audio, fx, camera } = this;
     const s = world.swimmer;
-    if (!this.swim && !this.swimDone && t > 55 && zone === 'hall') {
-      // from the deck it passes the near lane; in the water, the far one
+    if (!this.swim && !this.teased && !this.hunt && t > 55 && zone === 'hall') {
       const swimming = world.inPool(camera.position.x, camera.position.z);
       const lane = (camera.position.x > 0) !== swimming ? 3 : -3;
       if (this.looking(new THREE.Vector3(lane, -1.2, 0), 0.8) && Math.abs(camera.position.z) < 22) {
         const z0 = camera.position.z > 0 ? -14 : 14;
         this.swim = { t: 0, z0, z1: -z0, lane };
+        this.teased = true;
         s.position.set(lane, POOL_FLOOR + 0.3, z0);
+        s.rotation.set(Math.PI / 2, z0 > 0 ? Math.PI : 0, 0, 'YXZ');
         s.visible = true;
         this.swim.h = audio.play('underwater_presence', { pos: s.position, gain: 2.4, send: 0.8, ref: 4 });
-        audio.play('underwater_presence', { pos: s.position, gain: 1.6, send: 0.9, ref: 4, rate: 0.75, delay: 3.2 });
         fx.glitch = Math.max(fx.glitch, 0.4);
         fx.tension = Math.max(fx.tension, 0.85);
       }
@@ -100,13 +198,64 @@ export class Director {
       w.t += dt;
       const k = w.t / 7.5;
       s.position.set(w.lane + Math.sin(k * 7) * 0.35, POOL_FLOOR + 0.3 + Math.sin(k * 11) * 0.06, THREE.MathUtils.lerp(w.z0, w.z1, k));
-      s.rotation.z = Math.cos(k * 7) * 0.15;
       if (w.h?.panner) audio.setPos(w.h.panner, s.position);
       if (k >= 1) {
         s.visible = false;
         this.swim = null;
-        this.swimDone = true;
       }
+    }
+  }
+
+  // Awake, it only moves while you aren't looking. In the water it comes for you;
+  // on the deck it waits at the edge nearest you.
+  updateHunt(dt) {
+    const h = this.hunt;
+    if (!h) { this.heartbeat = 0; return; }
+    const { world, audio, player, camera, fx } = this;
+    const s = world.swimmer;
+    const p = player.pos;
+    const inWater = world.inPool(p.x, p.z) && p.y < WATER_Y;
+
+    const target = new THREE.Vector2(
+      THREE.MathUtils.clamp(p.x, -5.4, 5.4),
+      THREE.MathUtils.clamp(p.z, -14.4, 14.4));
+    const pos = new THREE.Vector2(s.position.x, s.position.z);
+    const dist = pos.distanceTo(new THREE.Vector2(p.x, p.z));
+    const seen = this.onScreen(s.position) && !(fx.nv < 0.5 && dist > 14);
+
+    h.delay -= dt;
+    if (!seen && h.delay <= 0) {
+      const speed = inWater ? SWIM.chasing : SWIM.toEdge;
+      const to = target.clone().sub(pos);
+      const len = to.length();
+      if (len > 0.05) h.vel.lerp(to.multiplyScalar(Math.min(speed, len * 2) / len), 1 - Math.exp(-dt * 3));
+      h.glideIn -= dt;
+      if (h.glideIn <= 0 && len > 0.5) {
+        h.glideIn = 2.2 + Math.random();
+        audio.play('swimmer_glide', { pos: s.position, gain: 1.6, send: 0.6, ref: 3 });
+      }
+    } else {
+      h.vel.multiplyScalar(Math.exp(-dt * 12)); // seen: it stops dead
+    }
+    // the moment you look back and it's closer than before
+    if (seen && !h.wasSeen && dist < 7) {
+      fx.glitch = Math.max(fx.glitch, 0.25 + (7 - dist) * 0.05);
+      audio.play('glitch', { gain: 0.12, send: 0, rate: 0.8 });
+    }
+    h.wasSeen = seen;
+
+    pos.addScaledVector(h.vel, dt);
+    s.position.x = pos.x;
+    s.position.z = pos.y;
+    s.position.y = POOL_FLOOR + 0.3 + Math.sin(this.t * 1.3) * 0.04;
+    if (h.vel.lengthSq() > 0.01) h.heading = Math.atan2(h.vel.x, h.vel.y);
+    s.rotation.set(Math.PI / 2, h.heading, Math.sin(this.t * 2) * 0.1, 'YXZ');
+
+    this.heartbeat = THREE.MathUtils.clamp(1 - (dist - 1.5) / 8, 0, 1) * (inWater ? 1 : 0.4);
+    if (inWater && dist < SWIM.reach && h.delay <= 0) {
+      this.hunt = null;
+      this.heartbeat = 0;
+      this.onCatch();
     }
   }
 
@@ -141,8 +290,7 @@ export class Director {
       if (this.finale <= 0) {
         fx.glitch = 1.6;
         fx.tension = 1;
-        audio.play('glitch', { gain: 0.9, send: 0.2 });
-        audio.play('dread_drone', { gain: 1.2, send: 0.6, rate: 0.6 });
+        audio.play('stinger', { gain: 1.1, send: 0.4 });
         world.endLight.dead = true;
         setTimeout(() => { world.endLight.dead = false; }, 3500);
         this.figStage = FIGURE_STAGES.length;

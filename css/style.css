@@ -83,6 +83,28 @@ button:disabled { opacity: 0.4; cursor: wait; }
 
 .controls b { font-weight: normal; color: #9fffe0; }
 
+.settings {
+  display: grid;
+  gap: 14px;
+  margin: 28px auto 32px;
+  width: min(420px, 100%);
+  text-align: left;
+  font-size: 22px;
+  letter-spacing: 0.1em;
+}
+
+.settings label { display: grid; gap: 4px; }
+
+.settings input[type=range] {
+  width: 100%;
+  accent-color: #9fffe0;
+  cursor: pointer;
+}
+
+#pausePanel { cursor: default; }
+
+#end { background: #000; cursor: default; }
+
 @keyframes jitter {
   0%, 92%, 100% { transform: none; opacity: 1; }
   93% { transform: translateX(-4px); opacity: 0.8; }

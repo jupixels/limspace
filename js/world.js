@@ -116,6 +116,43 @@ function slotTexture() {
   return t;
 }
 
+function slatTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8e9692';
+  g.fillRect(0, 0, 64, 64);
+  for (let y = 0; y < 64; y += 8) {
+    g.fillStyle = '#4a514e';
+    g.fillRect(0, y, 64, 2);
+    g.fillStyle = '#aab2ae';
+    g.fillRect(0, y + 2, 64, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function labelTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f1ecdc';
+  g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#9c2b2b';
+  g.fillRect(0, 10, 256, 4);
+  g.fillStyle = '#1d1d26';
+  g.font = 'italic bold 34px Arial';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('TAPE 02', 128, 38);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export function buildWorld(scene) {
   RectAreaLightUniformsLib.init();
   const colliders = [];
@@ -192,6 +229,7 @@ export function buildWorld(scene) {
   }
 
   // Area lights look best but cost the most per pixel, so only the big hall gets them.
+  let region = 'hall';
   function fixture(x, y, z, lum, rot = 0, len = 2.4, area = true) {
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3.2, 3) });
     const housing = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 0.1, 0.45), M.housing);
@@ -212,7 +250,7 @@ export function buildWorld(scene) {
       light.position.set(x, y - 0.25, z);
     }
     scene.add(light);
-    const entry = { light, mat, base: lum, area: area ? len * 0.35 : 1, baseColor: mat.color.clone(), pos: light.position.clone(), flicker: 0, on: true, dead: false };
+    const entry = { region, light, mat, base: lum, area: area ? len * 0.35 : 1, baseColor: mat.color.clone(), pos: light.position.clone(), flicker: 0, on: true, dead: false };
     lights.push(entry);
     return entry;
   }
@@ -395,7 +433,16 @@ export function buildWorld(scene) {
   fixture(0, H - 0.45, -8, 22, Math.PI / 2);
   fixture(0, H - 0.45, 8, 22, Math.PI / 2);
 
+  // the hall's only exit is behind a roll-up shutter until the tape is taken from the pool
+  const shutterMesh = box(15.12, 15.28, 0, 3, 17, 20, new THREE.MeshStandardMaterial({ map: slatTexture(), roughness: 0.45, metalness: 0.7 }), false);
+  shutterMesh.material.map.repeat.set(1, 3 / 0.5);
+  const shutterBlock = { minX: 15, maxX: 15.5, minZ: 17, maxZ: 20, minY: 0, maxY: 3 };
+  colliders.push(shutterBlock);
+  for (const z of [16.98, 20.02]) box(15.05, 15.35, 0, 3, z - 0.05, z + 0.05, M.frame, false);
+  const shutter = { mesh: shutterMesh, block: shutterBlock, opening: false, progress: 0, pos: new THREE.Vector3(15, 1.4, 18.5) };
+
   // ---------- Corridor A (dry): x[15,35] z[17,20] ----------
+  region = 'corridor';
   box(15, 35, -0.3, 0, 17, 20, corr.floor, false);
   box(15, 35, 3, 3.3, 17, 20, corr.ceiling, false);
   box(15, 35.5, 0, 3, 20, 20.5, corr.wall);
@@ -436,9 +483,10 @@ export function buildWorld(scene) {
   endLight.unstable = true;
 
   // the doorway opens onto nothing at all
-  block(33, 37, -18.8, -18.3);
-  block(33, 34, -18.8, -17.5);
-  block(36, 37, -18.8, -17.5);
+  // you can walk a few metres into it, no further
+  block(33, 37, -25.5, -25);
+  block(33, 34, -25.5, -17.5);
+  block(36, 37, -25.5, -17.5);
 
   // flooded water sheet
   const shallow = new THREE.MeshStandardMaterial({
@@ -452,6 +500,20 @@ export function buildWorld(scene) {
   sheetE.rotation.x = -Math.PI / 2;
   sheetE.position.set(35, 0.08, -11.25);
   scene.add(sheetB, sheetE);
+
+  // the next tape, lying on the pool floor
+  const cassette = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.025, 0.105), new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.35 }));
+  const labelTex = labelTexture();
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.04),
+    new THREE.MeshStandardMaterial({ map: labelTex, emissiveMap: labelTex, emissive: 0xffffff, emissiveIntensity: 0.35, roughness: 0.6 }));
+  label.rotation.x = -Math.PI / 2;
+  label.position.y = 0.0135;
+  cassette.add(shell, label);
+  cassette.position.set(2.5, F + 0.013, -4);
+  cassette.rotation.y = 0.5;
+  cassette.scale.setScalar(1.6); // reads at a distance through the water
+  scene.add(cassette);
 
   // ---------- Inhabitants ----------
   const swimmer = new THREE.Mesh(
@@ -540,6 +602,12 @@ export function buildWorld(scene) {
 
   function update(dt, t, underwater) {
     time.value = t;
+    if (shutter.opening && shutter.progress < 1) {
+      shutter.progress = Math.min(1, shutter.progress + dt / 3.6);
+      // rolls up in jerks, like a chain motor
+      shutter.mesh.position.y = 1.5 + 2.9 * shutter.progress + Math.sin(t * 40) * 0.006;
+      shutter.block.off = shutter.progress > 0.65;
+    }
     water.material.uniforms.time.value = t;
     wn.offset.set(t * 0.012, t * 0.007);
     water.visible = !underwater;
@@ -558,8 +626,21 @@ export function buildWorld(scene) {
     }
   }
 
+  // Back to how the tape starts: shutter down, cassette in the pool, lights on.
+  function reset() {
+    shutter.opening = false;
+    shutter.progress = 0;
+    shutter.block.off = false;
+    shutter.mesh.position.y = 1.5;
+    cassette.visible = true;
+    swimmer.visible = false;
+    figure.visible = false;
+    for (const l of lights) { l.dead = false; l.flicker = 0; }
+  }
+
   return {
-    colliders, lights, zoneAt, groundAt, inPool, update, swimmer, figure, water, ready, bakeProbes,
+    colliders, lights, zoneAt, groundAt, inPool, update, reset, swimmer, figure, water, ready, bakeProbes,
+    shutter, cassette,
     spawn: { pos: new THREE.Vector3(0, 0, 22), yaw: 0 },
     endLight,
   };

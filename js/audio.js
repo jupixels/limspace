@@ -4,7 +4,7 @@ const FILES = [
   'boot_1', 'boot_2', 'puddle_1', 'puddle_2', 'puddle_3', 'wade_1', 'wade_2', 'wade_loop',
   'splash_in', 'underwater', 'climb_out', 'land',
   'shutter_open', 'shutter_rattle', 'pickup', 'catch', 'static', 'rewind', 'stinger', 'lights_off',
-  'splash_far', 'eject', 'heartbeat', 'swimmer_glide',
+  'splash_far', 'eject', 'heartbeat', 'swimmer_glide', 'shriek',
 ];
 
 export class AudioSys {

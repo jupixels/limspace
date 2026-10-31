@@ -17,7 +17,7 @@ const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
 const REVERB = { hall: [0.6, 0.05], corridor: [0.12, 0.45], flooded: [0.12, 0.5], end: [0.2, 0.5], void: [0.7, 0.2] };
 const AIR_FOG = { color: new THREE.Color(0x0c1514), density: 0.016 };
 const WATER_FOG = { color: new THREE.Color(0x0a3236), density: 0.2 };
-const DEATH = { hold: 1.8, staticAt: 0.6 }; // seconds from the catch to the rewind
+const DEATH = { hold: 2.1, staticAt: 1.05 }; // seconds from the catch to the hard cut, then the rewind
 const REWIND_TIME = 2.6;
 const SETTINGS_KEY = 'limspace.settings';
 
@@ -245,9 +245,10 @@ director.onCatch = () => {
   state = 'dying';
   seqT = 0;
   player.frozen = true;
-  fx.glitch = 1.5;
+  fx.glitch = 0.7;
   fx.tension = 1;
-  audio.play('catch', { gain: 1.5, send: 0.5 });
+  audio.play('shriek', { gain: 2.2, send: 0.15 });
+  audio.play('catch', { gain: 1.2, send: 0.4 });
 };
 
 director.onEnd = () => {
@@ -275,12 +276,15 @@ function recordHistory(dt) {
 function updateSequences(dt) {
   seqT += dt;
   if (state === 'dying') {
-    // dragged under: the view sinks and tips, then the signal dies
-    player.dip = Math.min(0.9, seqT * 0.9);
-    player.tPitch += (-0.7 - player.tPitch) * Math.min(1, dt * 3);
-    director.updateLunge(dt);
+    // jumpscare: its face in the lens, everything shaking, then a hard cut to dead signal
     player.update(dt, gameT += dt);
-    U.staticAmt.value = THREE.MathUtils.smoothstep(seqT, DEATH.staticAt, DEATH.staticAt + 0.5);
+    director.updateLunge(dt);
+    const shake = seqT < DEATH.staticAt ? 0.045 * Math.min(1, seqT / 0.1) : 0;
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake;
+    camera.rotation.z += (Math.random() - 0.5) * shake * 2.5;
+    fx.glitch = Math.max(fx.glitch, seqT < DEATH.staticAt ? 0.35 + Math.random() * 0.4 : 0);
+    U.staticAmt.value = seqT < DEATH.staticAt ? 0 : 1;
     if (!staticSound && seqT > DEATH.staticAt) staticSound = audio.play('static', { gain: 0.5, send: 0 });
     if (seqT >= DEATH.hold) {
       state = 'rewinding';

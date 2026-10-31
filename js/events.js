@@ -30,6 +30,7 @@ export class Director {
     this.swim = null; // the one-off glide teaser
     this.lunge = null;
     this.world.swimmerRig?.setReach(0);
+    this.world.swimmerRig?.setScare(0);
     this.world.swimmer.rotation.set(0, 0, 0);
     this.teased ??= false;
     this.hunt = null; // the Swimmer awake and hunting
@@ -270,22 +271,33 @@ export class Director {
     }
   }
 
-  // The grab: it rears up out of its glide and throws itself at the lens.
+  // The jumpscare: it snaps out of the water straight into the lens, face filling the frame,
+  // jaw open, shaking, until the signal dies.
   updateLunge(dt) {
     const l = this.lunge;
     if (!l) return;
     const { world, camera, player } = this;
     const s = world.swimmer, rig = world.swimmerRig;
     l.t = (l.t ?? 0) + dt;
-    const k = THREE.MathUtils.smoothstep(l.t, 0, 0.35);
-    const goal = camera.position.clone().addScaledVector(player.forward, 0.45);
-    goal.y -= 0.25;
-    s.position.lerpVectors(l.from, goal, k);
-    v.subVectors(camera.position, s.position);
-    s.rotation.set(-Math.atan2(v.y, Math.hypot(v.x, v.z)) * k, Math.atan2(v.x, v.z), 0, 'YXZ');
-    rig.setReach(k);
-    rig.swim(dt, 6);
+    const rush = THREE.MathUtils.smoothstep(l.t, 0, 0.12);
+    const face = camera.position.clone().addScaledVector(player.forward, 0.5 + (1 - rush) * 2.6);
+    const jolt = 0.025 * rush;
+    face.x += (Math.random() - 0.5) * jolt;
+    face.y += (Math.random() - 0.5) * jolt + 0.01;
+    // point its head (local +Z) back at the lens, then slide the body so the face lands on `face`
+    v.subVectors(camera.position, face);
+    s.rotation.set(-Math.atan2(v.y, Math.hypot(v.x, v.z)), Math.atan2(v.x, v.z), (Math.random() - 0.5) * 0.08 * rush, 'YXZ');
+    rig.setReach(1);
+    rig.setScare(rush);
+    rig.swim(dt, 8);
     rig.update(dt, this.t + l.t, camera.position, 1);
+    s.updateMatrixWorld(true);
+    // stare straight down the lens, with a jittering tilt
+    rig.head.lookAt(camera.position);
+    rig.head.rotateZ((Math.random() - 0.5) * 0.12 * rush);
+    rig.head.updateMatrixWorld(true);
+    const headAt = rig.head.getWorldPosition(new THREE.Vector3());
+    s.position.add(face.sub(headAt));
   }
 
   // Beyond the end-room doorway there is nothing. Night vision shows otherwise.

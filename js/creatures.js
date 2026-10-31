@@ -46,13 +46,17 @@ export function createSwimmer() {
   segment(neck, 0.18, 0.045);
   const head = pivot(neck, [0, 0, 0.26]);
   mesh(new THREE.SphereGeometry(0.115, 14, 10), skin, head, [0, 0.02, 0.04], [0, 0, 0], [0.82, 0.92, 1.18]);
+  // pinpoint glints deep in the sockets, only lit for the scare
+  const glint = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 4, 3.6), fog: false });
+  const glints = [];
   for (const s of [-1, 1]) {
     mesh(new THREE.SphereGeometry(0.036, 8, 6), hollow, head, [s * 0.043, 0.03, 0.135], [0, 0, 0], [1.05, 1.5, 0.7]);
+    glints.push(mesh(new THREE.SphereGeometry(0.011, 6, 4), glint, head, [s * 0.043, 0.03, 0.16]));
     mesh(new THREE.SphereGeometry(0.03, 6, 4), bruise, head, [s * 0.075, -0.035, 0.1]); // sunken cheek
   }
   const jaw = pivot(head, [0, -0.05, 0.06]);
   mesh(new THREE.SphereGeometry(0.06, 10, 6), skin, jaw, [0, -0.02, 0.05], [0, 0, 0], [0.9, 0.45, 1]);
-  mesh(new THREE.SphereGeometry(0.04, 8, 6), hollow, head, [0, -0.06, 0.135], [0, 0, 0], [0.7, 1.4, 0.4]); // open mouth
+  const mouth = mesh(new THREE.SphereGeometry(0.04, 8, 6), hollow, head, [0, -0.06, 0.135], [0, 0, 0], [0.7, 1.4, 0.4]); // open mouth
 
   // matted scalp, and long hair drifting off it in the water
   mesh(new THREE.SphereGeometry(0.12, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat, head, [0, 0.025, 0.0], [-0.5, 0, 0], [0.88, 0.95, 1.2]);
@@ -96,8 +100,11 @@ export function createSwimmer() {
     return { s, hip, knee };
   });
 
+  glints.forEach((g) => { g.visible = false; });
+  const calmEmissive = skin.emissive.clone(), scareEmissive = new THREE.Color(0x6c837d);
   let phase = Math.random() * 6.28;
   let look = 0;
+  let scare = 0;
   let twitch = null;
   let reach = 0;
   const tmp = new THREE.Vector3();
@@ -124,7 +131,7 @@ export function createSwimmer() {
     body.rotation.z = Math.sin(ph) * 0.14;
     body.position.y = Math.sin(ph * 2) * 0.03;
     neck.rotation.x = 0.15;
-    jaw.rotation.x = 0.2 + 0.15 * Math.sin(t * 0.7);
+    jaw.rotation.x = THREE.MathUtils.lerp(0.2 + 0.15 * Math.sin(t * 0.7), 1.05 + Math.random() * 0.12, scare);
     hair.forEach((h) => {
       h.rotation.x = -0.1 + Math.sin(t * 1.1 + h.userData.seed) * 0.2;
       h.rotation.y = h.userData.splay + Math.sin(t * 0.8 + h.userData.seed * 2) * 0.25;
@@ -144,6 +151,16 @@ export function createSwimmer() {
     },
     // arms thrown forward for the grab
     setReach(v) { reach = v; },
+    // jumpscare: jaw wide, head swollen, eyes catching the light, skin lit from nowhere
+    setScare(v) {
+      scare = v;
+      head.scale.setScalar(1 + 0.3 * v);
+      mouth.scale.set(0.7 + 0.5 * v, 1.4 + 1.6 * v, 0.4);
+      mouth.position.y = -0.06 - 0.03 * v;
+      glints.forEach((g) => { g.visible = v > 0.5; });
+      skin.emissive.copy(calmEmissive).lerp(scareEmissive, v);
+    },
+    head,
     // weight 0 = face down to the floor, 1 = head turned up toward `target`
     update(dt, t, target, lookWeight) {
       look += (lookWeight - look) * (1 - Math.exp(-dt * 2.5));

@@ -111,7 +111,7 @@ canvas {
 }
 
 .tagline {
-  margin: 14px 0 48px;
+  margin: 14px 0 34px;
   font-size: clamp(20px, 2.4vw, 26px);
   letter-spacing: 0.32em;
   color: var(--dim);
@@ -185,7 +185,7 @@ h2 { font-size: clamp(56px, 7vw, 84px); font-weight: normal; margin: 0; letter-s
 .found { margin-bottom: 26px; }
 .found .row { display: flex; justify-content: space-between; font-size: 22px; letter-spacing: 0.14em; color: var(--dim); }
 .found .row b { font-weight: normal; color: var(--ink); }
-.segs { display: grid; grid-template-columns: repeat(30, 1fr); gap: 2px; margin-top: 8px; }
+.segs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin-top: 8px; }
 .segs i { height: 10px; background: rgba(236, 235, 230, 0.14); }
 .segs i.on { background: var(--accent); box-shadow: 0 0 6px rgba(159, 255, 224, 0.6); }
 
@@ -208,10 +208,40 @@ h2 { font-size: clamp(56px, 7vw, 84px); font-weight: normal; margin: 0; letter-s
 .panel.side .menu { align-items: flex-start; }
 .panel.side .menu button { padding-left: 0; margin-left: -1.3em; }
 
-@media (max-height: 640px) {
+@media (max-height: 760px) {
   .keys { display: none; }
   .tagline { margin-bottom: 26px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .logo, .logo::before, .logo::after, .overlay { animation: none; }
 }
+
+/* the tape shelf: four spines, one pulled out */
+.shelf { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 0 auto 14px; max-width: 760px; }
+.shelf .tape {
+  display: grid;
+  gap: 2px;
+  width: 168px;
+  padding: 10px 12px 9px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: linear-gradient(180deg, rgba(20, 20, 22, 0.85), rgba(8, 8, 10, 0.85));
+  border: 1px solid rgba(236, 235, 230, 0.25);
+  border-left: 6px solid #d9d2c0;
+  cursor: pointer;
+  text-shadow: inherit;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.shelf .tape .no { font-size: 16px; letter-spacing: 0.2em; color: var(--dim); }
+.shelf .tape .name { font-size: 24px; letter-spacing: 0.04em; line-height: 1; white-space: nowrap; }
+.shelf .tape .meta { font-size: 15px; letter-spacing: 0.1em; color: var(--dim); }
+.shelf .tape:hover { transform: translateY(-3px); border-color: rgba(236, 235, 230, 0.6); }
+.shelf .tape.on { border-color: var(--accent); border-left-color: var(--accent); transform: translateY(-6px); box-shadow: 0 6px 18px rgba(159, 255, 224, 0.15); }
+.shelf .tape.blank { opacity: 0.35; cursor: default; border-left-color: #555; }
+.shelf .tape.blank:hover { transform: none; }
+.blurb { margin: 0 0 22px; min-height: 24px; font-size: 22px; letter-spacing: 0.12em; color: var(--dim); }
+.found .row.obj { margin-top: 12px; gap: 16px; }
+.found .row.obj b { text-align: right; font-size: 20px; }
+.endt { font-size: clamp(48px, 8vw, 96px); }
+#end { background: #000; cursor: default; }

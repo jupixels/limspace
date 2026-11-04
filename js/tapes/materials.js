@@ -103,6 +103,64 @@ const signTexture = (text, color) => canvasTex(512, 96, (g, w, h) => {
   g.fillText(text, w / 2, h / 2 + 2);
 }, { repeat: false });
 
+// a printed poster, a clock, a screen: small painted things that make an office an office
+const posterTexture = (title, sub, bg, fg) => canvasTex(256, 340, (g, w, h) => {
+  g.fillStyle = bg;
+  g.fillRect(0, 0, w, h);
+  const grad = g.createLinearGradient(0, 0, 0, h * 0.7);
+  grad.addColorStop(0, 'rgba(255,255,255,0.25)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.25)');
+  g.fillStyle = grad;
+  g.fillRect(18, 18, w - 36, h * 0.62);
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.beginPath(); g.arc(w / 2, h * 0.36, 46, 0, 6.283); g.fill();
+  g.fillStyle = fg;
+  g.textAlign = 'center';
+  g.font = 'bold 30px Georgia';
+  g.fillText(title, w / 2, h * 0.78);
+  g.font = 'italic 16px Georgia';
+  g.fillText(sub, w / 2, h * 0.86);
+}, { repeat: false });
+
+const clockTexture = (hh, mm) => canvasTex(128, 128, (g, w) => {
+  const c = w / 2;
+  g.fillStyle = '#f4f1e8'; g.beginPath(); g.arc(c, c, 60, 0, 6.283); g.fill();
+  g.strokeStyle = '#222'; g.lineWidth = 5; g.stroke();
+  g.lineWidth = 3;
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * 6.283;
+    g.beginPath(); g.moveTo(c + Math.sin(a) * 48, c - Math.cos(a) * 48); g.lineTo(c + Math.sin(a) * 56, c - Math.cos(a) * 56); g.stroke();
+  }
+  const hand = (a, len, wid) => { g.lineWidth = wid; g.beginPath(); g.moveTo(c, c); g.lineTo(c + Math.sin(a) * len, c - Math.cos(a) * len); g.stroke(); };
+  hand(((hh % 12) + mm / 60) / 12 * 6.283, 30, 5);
+  hand(mm / 60 * 6.283, 46, 3);
+}, { repeat: false });
+
+const screenTexture = (lines) => canvasTex(128, 96, (g, w, h) => {
+  g.fillStyle = '#1b3a6b';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = '#d8e4f4';
+  g.fillRect(8, 8, w - 16, 14);
+  g.fillStyle = '#1b3a6b';
+  g.font = '10px monospace';
+  g.fillText('QUARTERLY_REPORT.DOC', 11, 18);
+  g.fillStyle = '#e8eef6';
+  g.fillRect(8, 24, w - 16, h - 32);
+  g.fillStyle = '#5a6a80';
+  for (let i = 0; i < lines; i++) g.fillRect(12, 30 + i * 6, 30 + ((i * 37) % 60), 2);
+}, { repeat: false });
+
+const paperTexture = () => canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#f2efe6';
+  g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#8a8a8a';
+  g.lineWidth = 2;
+  // the floor plan of this office, with more of it than there should be
+  g.strokeRect(16, 16, 96, 96);
+  for (let i = 0; i < 9; i++) { g.strokeRect(20 + (i % 3) * 30, 20 + Math.floor(i / 3) * 30, 26, 26); }
+  g.fillStyle = '#c33'; g.fillRect(58, 58, 6, 6);
+}, { repeat: false });
+
 // Caustics swim across pool floors.
 const CAUSTIC = /* glsl */`
   float caustic(vec2 p, float t) {
@@ -219,6 +277,35 @@ export function makeMaterials() {
     plastic: new THREE.MeshStandardMaterial({ color: 0x1d1c1b, roughness: 0.4 }),
     fabric: new THREE.MeshStandardMaterial({ color: 0x4d4a52, roughness: 0.95 }),
     tapeGlow: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.0, 1.6) }),
+    // the office
+    ofCarpet: pbr('Carpet008', 1.2, { color: 0x7c818f, roughness: 1 }),
+    ofWall: pbr('Wallpaper002A', 1.4, { color: 0xb9b2a0, roughness: 0.9 }),
+    ofCeiling: pbr('OfficeCeiling001', 1.2, { color: 0xc9c4b6, roughness: 1 }),
+    ofTile: pbr('Tiles107', 0.6, { color: 0xa89c82, roughness: 0.5 }),
+    lbFloor: pbr('Tiles107', 1.6, { color: 0x8f877a, roughness: 0.18, envMapIntensity: 0.8 }),
+    lbWood: pbr('WoodFloor051', 1.4, { color: 0xc49a70, roughness: 0.55 }),
+    concrete: pbr('Concrete034', 2, { color: 0x9a978e, roughness: 0.95 }),
+    wetCarpet: pbr('Carpet008', 1.4, { color: 0x857444, roughness: 0.3, envMapIntensity: 1.3 }),
+    cubicle: new THREE.MeshStandardMaterial({ color: 0x777c88, roughness: 1 }),
+    cubicleTrim: new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.5, metalness: 0.4 }),
+    desk: new THREE.MeshStandardMaterial({ color: 0xbcb197, roughness: 0.6 }),
+    deskMetal: new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.4, metalness: 0.8 }),
+    beige: new THREE.MeshStandardMaterial({ color: 0xd8cfb6, roughness: 0.5 }),
+    screenOff: new THREE.MeshStandardMaterial({ color: 0x0c0e10, roughness: 0.15 }),
+    screenOn: new THREE.MeshBasicMaterial({ map: screenTexture(9), color: new THREE.Color(1.3, 1.3, 1.3) }),
+    paper: new THREE.MeshStandardMaterial({ map: paperTexture(), roughness: 0.9 }),
+    glass: new THREE.MeshStandardMaterial({ color: 0x9fb4ba, transparent: true, opacity: 0.16, roughness: 0.04, metalness: 0.2, depthWrite: false }),
+    glassFrame: new THREE.MeshStandardMaterial({ color: 0x3c3f42, roughness: 0.4, metalness: 0.7 }),
+    elevator: new THREE.MeshStandardMaterial({ color: 0xa9adae, roughness: 0.28, metalness: 0.85 }),
+    fuse: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.5, 0.45) }),
+    fuseDead: new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.6 }),
+    ledRed: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.2, 0.15) }),
+    ledGreen: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2.4, 0.5) }),
+    clock: new THREE.MeshBasicMaterial({ map: clockTexture(2, 13), color: 0xcfcac0 }),
+    posterA: new THREE.MeshStandardMaterial({ map: posterTexture('PERSEVERANCE', 'the work is never finished', '#3d5d7a', '#f2eee4'), roughness: 0.7 }),
+    posterB: new THREE.MeshStandardMaterial({ map: posterTexture('STAY', 'thank you for staying late', '#7a5a3d', '#f2eee4'), roughness: 0.7 }),
+    posterC: new THREE.MeshStandardMaterial({ map: posterTexture('TEAMWORK', 'none of us are leaving', '#4a6a4a', '#f2eee4'), roughness: 0.7 }),
+    black: new THREE.MeshBasicMaterial({ color: 0x000000 }),
   };
   const signs = {};
   const sign = (text, color) => (signs[text] ??= new THREE.MeshBasicMaterial({ map: signTexture(text, color), color: new THREE.Color(2.6, 2.6, 2.6) }));
@@ -247,7 +334,9 @@ export function makeMaterials() {
     for (const m of [M.brWall, M.brCarpet, M.brCeiling, M.brTrim]) m.envMap = backrooms;
     for (const m of [M.plTile, M.plFloor, M.plPool, M.plCeiling, M.water]) m.envMap = pool;
     for (const m of [M.mlFloor, M.mlWall, M.mlCeiling, M.mlGlass, M.mlShutter, M.mlBench, M.mlPlanter, M.mlLeaf, M.mlPillar, M.mlSoil, M.waterBright]) m.envMap = mall;
-    for (const m of [M.housing, M.metal, M.plastic, M.fabric]) m.envMap = backrooms;
+    const office = env('#f4f2ea', '#8c8e94', '#2c2e34');
+    for (const m of [M.housing, M.metal, M.plastic, M.fabric, M.wetCarpet]) m.envMap = backrooms;
+    for (const m of [M.ofCarpet, M.ofWall, M.ofCeiling, M.ofTile, M.lbFloor, M.lbWood, M.concrete, M.cubicle, M.cubicleTrim, M.desk, M.deskMetal, M.beige, M.screenOff, M.glass, M.glassFrame, M.elevator, M.paper]) m.envMap = office;
     pmrem.dispose();
   }
 

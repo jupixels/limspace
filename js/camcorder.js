@@ -197,6 +197,16 @@ export class OSD {
       if (!lowBlink) g.fillRect(bx + 3, by + 3, 28 * s.battery / 100, 9);
       this.text('IR', bx - 10, by - 4, 'right', '#d6ffd0');
     }
+    // a new objective shows for a while under the record light, then gets out of the way
+    if (s.objective !== undefined && s.objective !== this.lastObj) { this.lastObj = s.objective; this.objT = s.t; }
+    if (this.lastObj && s.t - this.objT < 7) {
+      g.save();
+      g.globalAlpha = Math.min(1, (s.t - this.objT) / 0.5, (7 - (s.t - this.objT)) / 1.2);
+      g.font = '22px VT323, monospace';
+      g.letterSpacing = '2px';
+      this.text('> ' + this.lastObj, m - 8, m + 20, 'left', '#e8e4d8');
+      g.restore();
+    }
     // what's said: a quiet subtitle in the lower third, fading in and out
     if (s.message && s.messageA > 0) {
       g.save();

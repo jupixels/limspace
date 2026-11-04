@@ -22,16 +22,17 @@
 
   <div id="title" class="overlay">
     <div class="osd tl"><span class="blink">&#9632;</span> STOP</div>
-    <div class="osd tr">SP <span id="seed">CH 00000</span></div>
+    <div class="osd tr">SP &nbsp;CH 03</div>
     <div class="osd bl" id="clock">AM 3:14<br>NOV. 03 1999</div>
     <div class="osd br">TRACKING <span class="track"><i></i><i></i><i></i><i></i><i class="off"></i></span></div>
 
     <div class="panel">
       <h1 class="logo" data-text="LIMSPACE">LIMSPACE</h1>
-      <p class="tagline">no map. no exit. just keep walking.</p>
+      <p class="tagline">four tapes. nobody came back for them.</p>
+      <div class="shelf" id="shelf"></div>
+      <p class="blurb" id="blurb"></p>
       <nav class="menu">
-        <button id="play"><span class="cur">&#9654;</span>ENTER</button>
-        <button id="newDream"><span class="cur">&#9654;</span>NEW WORLD</button>
+        <button id="play"><span class="cur">&#9654;</span>PLAY TAPE</button>
       </nav>
       <div class="loading">
         <div class="bar"><i id="bar"></i></div>
@@ -56,11 +57,11 @@
     <div class="osd tl">&#10074;&#10074; PAUSE</div>
     <div class="panel side" id="pausePanel">
       <h2>PAUSED</h2>
-      <p class="world" id="pauseWorld">WORLD 00000</p>
+      <p class="world" id="pauseTape">TAPE 01</p>
       <div class="found">
-        <div class="row"><span>TAPES FOUND</span><b id="found">0</b></div>
-        <div class="row"><span>LINES HEARD</span><b id="heard">0 / 30</b></div>
+        <div class="row"><span>RECORDINGS</span><b id="found">0 / 8</b></div>
         <div class="segs" id="segs"></div>
+        <div class="row obj"><span>NOW</span><b id="objective">-</b></div>
       </div>
       <div class="settings">
         <label><span>LOOK SENSITIVITY</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05"></label>
@@ -70,6 +71,18 @@
       <nav class="menu">
         <button id="resume"><span class="cur">&#9654;</span>RESUME</button>
         <button id="quit"><span class="cur">&#9654;</span>EJECT</button>
+      </nav>
+    </div>
+  </div>
+
+  <div id="end" class="overlay hidden">
+    <div class="osd tl">&#9632; STOP</div>
+    <div class="panel">
+      <h2 id="endTitle" class="endt">END OF TAPE</h2>
+      <p class="tagline" id="endName"></p>
+      <p class="blurb" id="endRecs"></p>
+      <nav class="menu">
+        <button id="endBack"><span class="cur">&#9654;</span>BACK TO THE SHELF</button>
       </nav>
     </div>
   </div>

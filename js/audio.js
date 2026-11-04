@@ -5,13 +5,12 @@ const FILES = [
   'splash_in', 'underwater', 'climb_out', 'land',
   'shutter_open', 'shutter_rattle', 'pickup', 'catch', 'static', 'rewind', 'stinger', 'lights_off',
   'splash_far', 'eject', 'heartbeat', 'swimmer_glide', 'shriek',
-  'hotel_ambience', 'occupant_step', 'stare_whine', 'phone_ring', 'elevator_ding', 'knock', 'door_creak',
+  'occupant_step', 'stare_whine', 'phone_ring', 'elevator_ding', 'knock', 'door_creak',
   'shriek2', 'carpet_1', 'carpet_2', 'tv_static',
-  'house_ambience', 'wood_1', 'wood_2', 'clicks', 'scramble', 'shriek3', 'breaker', 'hiss', 'floor_creak',
+  'wood_1', 'wood_2', 'clicks', 'scramble', 'shriek3', 'breaker', 'hiss', 'floor_creak',
   'dead_buttons', 'door_open', 'clock',
   'music_box', 'tape_end', 'splice', 'void_tone',
-  'backrooms_buzz', 'meadow_wind', 'mall_ambience', 'poolrooms_ambience', 'grass_1', 'grass_2', 'memory_chime',
-  'dream_door', 'phone_voice', 'children_far', 'fountain',
+  'backrooms_buzz', 'grass_1', 'grass_2', 'memory_chime', 'phone_voice',
 ];
 
 export class AudioSys {
@@ -47,6 +46,17 @@ export class AudioSys {
       onProgress?.(++done / FILES.length);
     }));
     this.makeZoomMotor();
+  }
+
+  // a tape's own sounds, fetched when it's chosen
+  async load(names, onProgress) {
+    const want = names.filter((f) => !this.buffers[f]);
+    let done = 0;
+    await Promise.all(want.map(async (f) => {
+      const res = await fetch(`audio/${f}.mp3`);
+      this.buffers[f] = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      onProgress?.(++done / want.length);
+    }));
   }
 
   impulse(sec, decay) {

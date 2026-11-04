@@ -9,9 +9,8 @@ import { Player } from './player.js';
 import { Body } from './body.js';
 import { AudioSys } from './audio.js';
 import { CamcorderShader, OSD } from './camcorder.js';
-import { OpenWorld } from './ow/world.js';
-import { ExploreDirector } from './ow/director.js';
-import { BIOMES } from './ow/biomes.js';
+import { Level } from './tapes/level.js';
+import { TAPES } from './tapes/index.js';
 
 // Camcorder sensors were low-res; rendering below native keeps it soft (and fast).
 const PIXEL_RATIO = Math.min(devicePixelRatio, 1) * 0.8;
@@ -20,17 +19,15 @@ const DEATH = { hold: 2.1, staticAt: 1.05 }; // seconds from the catch to the ha
 const REWIND_TIME = 2.6;
 const REWIND_SPAN = 20; // seconds of your own path the tape runs back over
 const SETTINGS_KEY = 'limspace.settings';
-const SEED_KEY = 'limspace.seed';
-const AMBIENCE = { backrooms: 'backrooms_buzz', pool: 'poolrooms_ambience', meadow: 'meadow_wind', mall: 'mall_ambience' };
+const TAPE_KEY = 'limspace.tape';
+const DONE_KEY = 'limspace.done';
 const $ = (id) => document.getElementById(id);
-
-// the same world every visit, until you ask for a new one
-let seed;
-try { seed = +localStorage.getItem(SEED_KEY); } catch { /* storage off */ }
-if (!seed) {
-  seed = 1 + Math.floor(Math.random() * 99999);
-  try { localStorage.setItem(SEED_KEY, String(seed)); } catch { /* storage off */ }
-}
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage off */ } },
+};
+const playable = TAPES.filter((t) => t.level);
+let tape = playable.find((t) => t.id === store.get(TAPE_KEY, 't1')) ?? playable[0];
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(PIXEL_RATIO);
@@ -43,13 +40,21 @@ scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.04);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 400);
 
-const world = new OpenWorld(scene, seed);
+let world = new Level(scene, tape.level);
 const player = new Player(camera, world);
 const audio = new AudioSys();
 const osd = new OSD();
 const fx = { glitch: 0, tension: 0.1, nv: 0, nvOn: false, battery: 100, exposure: 1, fade: 1, under: 0 };
-const director = new ExploreDirector({ world, audio, player, fx, camera });
+let director = null;
 let body = null;
+// the camcorder's infrared lamp: only there while night vision is on
+const ir = new THREE.PointLight(0xffffff, 0, 24, 1.3);
+scene.add(ir);
+
+function makeDirector() {
+  director = new tape.Director({ world, audio, player, fx, camera, tape });
+  director.onCatch = onCatch;
+}
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -86,9 +91,9 @@ const history = []; // your path over the last stretch, for the rewind
 let historyT = 0;
 const loops = {};
 
-const prepared = (async () => {
+const compile = () => (renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera));
+let prepared = (async () => {
   await world.ready;
-  const compile = () => (renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera));
   await world.bakeProbes(renderer, compile);
   try {
     body = await new Body().load('models');
@@ -101,15 +106,48 @@ const prepared = (async () => {
   if (state === 'title') $('status').textContent = 'ready';
 })();
 $('status').textContent = 'loading...';
-$('seed').textContent = `CH ${String(seed).padStart(5, '0')}`;
-$('pauseWorld').textContent = `WORLD ${String(seed).padStart(5, '0')}`;
+
+// another tape goes in: tear the old place down and build the new one
+async function swapTape(t) {
+  if (t === tape || state !== 'title') return;
+  tape = t;
+  store.set(TAPE_KEY, t.id);
+  ready = false;
+  $('status').textContent = 'loading...';
+  world.dispose();
+  world = new Level(scene, tape.level);
+  player.world = world;
+  player.colliders = world.colliders;
+  player.place(world.spawn.pos.x, 0, world.spawn.pos.z, world.spawn.yaw);
+  prepared = (async () => { await world.ready; await world.bakeProbes(renderer, compile); ready = true; $('status').textContent = 'ready'; })();
+  renderShelf();
+}
+
+// the tape shelf on the title screen
+function renderShelf() {
+  const done = store.get(DONE_KEY, []);
+  const shelf = $('shelf');
+  shelf.innerHTML = '';
+  for (const t of TAPES) {
+    const b = document.createElement('button');
+    b.className = 'tape' + (t === tape ? ' on' : '') + (t.level ? '' : ' blank');
+    const recs = store.get(`limspace.rec.${t.id}`, []).length;
+    b.innerHTML = `<span class="no">TAPE ${t.number}</span><span class="name">${t.title}</span>`
+      + `<span class="meta">${t.level ? `${done.includes(t.id) ? '&#9632; WATCHED' : '&#9633; UNWATCHED'} &middot; ${recs}/8` : 'NOT RECORDED YET'}</span>`;
+    b.title = t.blurb;
+    b.disabled = !t.level;
+    b.addEventListener('click', (e) => { e.stopPropagation(); swapTape(t); });
+    shelf.appendChild(b);
+  }
+  $('blurb').textContent = tape.blurb;
+}
+renderShelf();
 {
   // the camcorder's clock was never set: right time of night, wrong year
   const d = new Date(), h = d.getHours();
   const mon = ['JAN.', 'FEB.', 'MAR.', 'APR.', 'MAY', 'JUN.', 'JUL.', 'AUG.', 'SEP.', 'OCT.', 'NOV.', 'DEC.'][d.getMonth()];
   $('clock').innerHTML = `${h < 12 ? 'AM' : 'PM'} ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}<br>${mon} ${String(d.getDate()).padStart(2, '0')} 1999`;
 }
-for (let i = 0; i < 30; i++) $('segs').appendChild(document.createElement('i'));
 
 // tape snow over the menus, drawn small and stretched
 const snow = $('snow'), snowG = snow.getContext('2d');
@@ -124,10 +162,13 @@ function drawSnow() {
   snowG.putImageData(snowImg, 0, 0);
 }
 function showPause() {
-  const n = director.tapesFound, heard = director.linesHeard;
-  $('found').textContent = String(n).padStart(2, '0');
-  $('heard').textContent = `${heard} / 30`;
-  [...$('segs').children].forEach((el, i) => el.classList.toggle('on', i < heard));
+  const n = director.recordingsFound, total = director.recordingsTotal;
+  $('pauseTape').textContent = `TAPE ${tape.number}  ${tape.title}`;
+  $('found').textContent = `${n} / ${total}`;
+  $('objective').textContent = director.objective ?? '-';
+  const segs = $('segs');
+  if (segs.children.length !== total) { segs.innerHTML = ''; for (let i = 0; i < total; i++) segs.appendChild(document.createElement('i')); }
+  [...segs.children].forEach((el, i) => el.classList.toggle('on', i < n));
   $('pause').classList.remove('hidden');
 }
 
@@ -181,7 +222,8 @@ $('play').addEventListener('click', async (e) => {
   lock();
   try {
     $('bar').parentElement.classList.add('on');
-    await audio.init((p) => { $('status').textContent = 'loading tape...'; $('bar').style.width = `${Math.round(p * 90)}%`; });
+    await audio.init((p) => { $('status').textContent = 'loading tape...'; $('bar').style.width = `${Math.round(p * 60)}%`; });
+    await audio.load(tape.sounds ?? [], (p) => { $('bar').style.width = `${Math.round(60 + p * 30)}%`; });
     $('status').textContent = 'rewinding...';
     await Promise.all([prepared, document.fonts.load('26px VT323')]);
   } catch (err) {
@@ -190,6 +232,7 @@ $('play').addEventListener('click', async (e) => {
     $('play').disabled = false;
     return;
   }
+  makeDirector();
   startAmbience();
   applySettings();
   resetHistory();
@@ -203,11 +246,8 @@ $('play').addEventListener('click', async (e) => {
   }
   $('bar').style.width = '100%';
 });
-$('newDream').addEventListener('click', (e) => {
-  e.stopPropagation();
-  try { localStorage.setItem(SEED_KEY, String(1 + Math.floor(Math.random() * 99999))); } catch { /* storage off */ }
-  location.reload();
-});
+$('endBack').addEventListener('click', (e) => { e.stopPropagation(); location.reload(); });
+$('end').addEventListener('click', (e) => e.stopPropagation());
 
 $('pause').addEventListener('click', lock);
 $('pausePanel').addEventListener('click', (e) => e.stopPropagation());
@@ -245,8 +285,12 @@ function startAmbience() {
   loops.wade = audio.loop('wade_loop', { gain: 0, send: 0.4 });
   loops.heart = audio.loop('heartbeat', { gain: 0, send: 0 });
   loops.whine = audio.loop('stare_whine', { gain: 0, send: 0 });
-  // one bed of sound per kind of place, crossfaded as you move between them
-  for (const [biome, name] of Object.entries(AMBIENCE)) loops[biome] = audio.loop(name, { gain: 0, send: 0 });
+  // one bed of sound per room, crossfaded as you move between them
+  loops.beds = {};
+  for (const z of Object.values(world.zones)) {
+    const name = z.ambience?.[0];
+    if (name && !loops.beds[name]) loops.beds[name] = audio.loop(name, { gain: 0, send: 0 });
+  }
 }
 
 // ---------- auto exposure ----------
@@ -275,6 +319,7 @@ function footstep() {
   if (player.wading) audio.play(pick('wade_1', 'wade_2'), { pos: feet(), gain: 0.55 * k, send: 0.6, ref: 1.5, rate });
   else if (depth > 0.02) audio.play(pick('puddle_1', 'puddle_2', 'puddle_3'), { pos: feet(), gain: 0.7 * k, send: 0.55, ref: 1.5, rate });
   else if (floor === 'grass') audio.play(pick('grass_1', 'grass_2'), { pos: feet(), gain: 0.55 * k, send: 0.1, ref: 1.5, rate });
+  else if (floor === 'concrete') audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.65 * k, send: 0.8, ref: 1.5, rate: rate * 0.9 });
   else if (floor === 'carpet') audio.play(pick('carpet_1', 'carpet_2'), { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
   else audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.55 * k, send: 0.7, ref: 1.5, rate });
   director.noise((player.running ? 1 : crouch ? 0.08 : 0.42) * (floor === 'carpet' ? 0.6 : 1), player.pos);
@@ -290,7 +335,7 @@ function playerEvents() {
 }
 
 // ---------- caught, then the tape runs back a little ----------
-director.onCatch = () => {
+function onCatch() {
   state = 'dying';
   seqT = 0;
   player.frozen = true;
@@ -298,7 +343,21 @@ director.onCatch = () => {
   fx.tension = 1;
   audio.play(director.catchSound ?? 'shriek', { gain: 2.2, send: 0.15 });
   audio.play('catch', { gain: 1.2, send: 0.4 });
-};
+}
+
+// ---------- the end of a tape ----------
+function endTape() {
+  state = 'ended';
+  const done = store.get(DONE_KEY, []);
+  if (!done.includes(tape.id)) store.set(DONE_KEY, [...done, tape.id]);
+  player.keys.clear();
+  if (document.pointerLockElement) document.exitPointerLock();
+  audio.play('tape_end', { gain: 0.9, send: 0 });
+  $('endTitle').textContent = `END OF TAPE ${tape.number}`;
+  $('endName').textContent = tape.title;
+  $('endRecs').textContent = `recordings found ${director.recordingsFound} / ${director.recordingsTotal}`;
+  $('end').classList.remove('hidden');
+}
 
 function resetHistory() {
   history.length = 0;
@@ -372,14 +431,14 @@ function tick(dt) {
     if (player.update(dt, gameT)) footstep();
     playerEvents();
     director.update(dt);
-    if (director.wrapped) { director.wrapped = false; resetHistory(); }
+    if (director.finished) endTape();
     recordHistory(dt);
     playMarker = Math.max(0, playMarker - dt);
     if (fx.nvOn) {
       fx.battery = Math.max(0, fx.battery - dt * 0.35);
       if (fx.battery <= 0) { fx.nvOn = false; fx.glitch = 0.6; }
     } else fx.battery = Math.min(100, fx.battery + dt * 0.1);
-    fx.fade = Math.max(0, fx.fade - dt * 0.6);
+    if (!director.holdFade) fx.fade = Math.max(0, fx.fade - dt * 0.6);
   } else if (state === 'title' || state === 'loading') {
     player.update(dt, realT);
   } else if (state === 'dying' || state === 'rewinding') {
@@ -393,20 +452,22 @@ function tick(dt) {
   world.update(dt, realT, underwater, camera.position);
   const fog = underwater ? WATER_FOG : world.fogAt(camera.position);
   scene.fog.color.copy(fog.color);
-  scene.fog.density = fog.density;
+  scene.fog.density = fog.density * (underwater ? 1 : 1 - 0.6 * fx.nv);
   scene.background.copy(underwater ? WATER_FOG.color : fog.background);
 
   fx.glitch = Math.max(0, fx.glitch - dt * 1.1);
   fx.nv += ((fx.nvOn ? 1 : 0) - fx.nv) * (1 - Math.exp(-dt * 12));
   const target = THREE.MathUtils.clamp(Math.pow(0.9 / sceneLight(), 0.55), 0.45, 2.2);
   fx.exposure += (target - fx.exposure) * (1 - Math.exp(-dt * 0.8));
-  renderer.toneMappingExposure = fx.exposure * (1 + fx.nv * 0.8);
+  ir.position.copy(camera.position).addScaledVector(player.forward, 0.3);
+  ir.intensity = fx.nv * 4.5;
+  renderer.toneMappingExposure = (fx.nv > 0.01 ? THREE.MathUtils.lerp(fx.exposure, 1.1, fx.nv) : fx.exposure) * (1 + fx.nv * 0.5);
   [bloom.strength, bloom.threshold] = world.level.bloom;
 
-  if (audio.ctx && state !== 'loading') {
+  if (audio.ctx && director && state !== 'loading') {
     audio.setListener(camera, player.forward);
-    const zone = world.zoneAt(player.pos.x, player.pos.z);
-    audio.setReverb(...BIOMES[zone].reverb);
+    const Z = world.zone(player.pos.x, player.pos.z);
+    audio.setReverb(...(Z.reverb ?? [0.1, 0.3]));
     audio.setZoomMotor(state === 'playing' ? (player.tZoom - player.zoom) * 3 : 0);
     audio.setMuffled(state === 'paused' ? 500 : underwater ? 650 : 20000);
     const set = (h, v, tc = 0.2) => h && audio.ramp(h.gain.gain, v, tc);
@@ -416,7 +477,7 @@ function tick(dt) {
     set(loops.wade, player.wading && !underwater ? Math.min(player.speed / 1.05, 1) * 0.5 : 0, 0.15);
     set(loops.heart, state === 'playing' ? director.heartbeat * 0.8 : 0, 0.4);
     set(loops.whine, state === 'playing' ? director.whine * 0.9 : 0, 0.15);
-    for (const biome of Object.keys(AMBIENCE)) set(loops[biome], biome === zone ? (biome === 'backrooms' ? 0.35 : 0.6) : 0, 1.2);
+    for (const [name, h] of Object.entries(loops.beds ?? {})) set(h, Z.ambience?.[0] === name ? Z.ambience[1] * (state === 'ended' ? 0 : 1) : 0, 1.2);
   }
 
   U.time.value = realT;
@@ -424,13 +485,13 @@ function tick(dt) {
   U.tension.value = fx.tension;
   U.nv.value = fx.nv;
   U.underwater.value = fx.under;
-  U.fade.value = state === 'title' || state === 'loading' ? 0.55 : fx.fade;
+  U.fade.value = state === 'title' || state === 'loading' ? 0.55 : state === 'ended' ? 1 : fx.fade;
   U.paused.value = state === 'paused' ? 1 : 0;
   U.noiseAmt.value = (0.03 + Math.max(0, fx.exposure - 1) * 0.03) * settings.fx + fx.tension * 0.04;
   if (state === 'playing' || state === 'paused') U.staticAmt.value = 0;
 
   osdTimer -= dt;
-  if (osdTimer <= 0 && state !== 'title') {
+  if (osdTimer <= 0 && director && state !== 'title' && state !== 'loading') {
     osdTimer = 1 / 15;
     osd.draw({
       t: gameT, recording: state === 'playing', battery: fx.battery, nv: fx.nv,
@@ -438,6 +499,7 @@ function tick(dt) {
       prompt: state === 'playing' ? director.prompt : null,
       message: state === 'playing' ? director.message : null,
       messageA: Math.min(1, (director.messageLen - director.messageT) / 0.6, director.messageT / 1.2),
+      objective: state === 'playing' ? director.objective : null,
     });
   }
 
@@ -462,4 +524,4 @@ addEventListener('resize', () => {
   osd.resize(camera.aspect);
 });
 
-window.game = { world, player, fx, audio, director, renderer, camera, scene, composer, osd, tick, quality, get body() { return body; } };
+window.game = { get world() { return world; }, player, fx, audio, get director() { return director; }, renderer, camera, scene, composer, osd, tick, quality, get body() { return body; } };

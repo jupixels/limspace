@@ -1,6 +1,6 @@
 # LIMSPACE
 
-A found-footage liminal-space horror game that runs in the browser. You carry a camcorder through an endless, generated world of empty places that should not exist: backrooms, poolrooms, a pastel meadow, a mall after closing.
+A found-footage liminal-space horror game that runs in the browser. You carry a camcorder through empty places that should not exist, one tape at a time.
 
 **Play:** https://jupixels.github.io/limspace/
 
@@ -19,18 +19,16 @@ A found-footage liminal-space horror game that runs in the browser. You carry a 
 
 Headphones recommended.
 
-## The world
+## The tapes
 
-There is no map, no story and no exit. Every world is generated from a seed (shown on the title screen; **NEW WORLD** rolls another) and streams in around you as you walk, forever, in every direction. It is made of four kinds of place that bleed into each other through doorways:
+Four hand-built places, each on its own tape, all on the shelf from the start. Each has its own story told through recordings left behind (eight per tape, saved once found), its own entity, and things that happen by themselves when you aren't looking.
 
-- **The backrooms:** yellow wallpaper, damp carpet and buzzing panel lights, in a maze that never repeats.
-- **The poolrooms:** white tile halls, shallow and deep pools, light from skylights that lead nowhere.
-- **The meadow:** mown grass under a pastel sky, with doors, swing sets, stairs and televisions standing in it.
-- **The mall:** a two-storey shopping arcade after closing: shutters, neon signs, a fountain still running.
+- **Tape 01: Overtime.** An office at 2:13 am that keeps going past the supply closet: a cubicle farm, a yellow maze, a flooded section, a storage room with no light at all, maintenance tunnels. The elevator needs four fuses. Something tall lives past the closet door: don't stare at it, and don't turn your back on it.
+- **Tape 02: Deep End.** (not recorded yet) A swim lesson that never ended.
+- **Tape 03: Recess.** (not recorded yet) The party is still waiting for you.
+- **Tape 04: Closing Time.** (not recorded yet) The mall is now closed.
 
-Things to find: lost tapes with someone's voice on them, payphones that ring when you come close, and very rarely a door that goes somewhere else. Your found tapes are saved per world.
-
-Each kind of place has something living in it, and it is rare: the Swimmer in deep pools (it moves only when unseen), the Occupant in the backrooms (don't stare, don't turn your back), the Listener in the mall (it hunts by sound; crouch), and something in the meadow that only watches. If one catches you, the tape rewinds a few seconds.
+If something catches you, the tape rewinds a few seconds.
 
 ## Running locally
 
@@ -44,16 +42,17 @@ Then open http://localhost:8123.
 
 ## Structure
 
-- `js/main.js`: renderer, post-processing chain, game loop, title and pause menus, ambience, catch and rewind
+- `js/main.js`: renderer, post-processing chain, game loop, tape shelf, pause and end screens, ambience, catch and rewind
 - `js/player.js`: first-person controller: walking, jumping, wading, climbing, camcorder motion
 - `js/body.js`: the player's visible hazmat-suited body and its animations
 - `js/camcorder.js`: VHS/camcorder shader and viewfinder overlay
 - `js/audio.js`: positional audio, reverb zones
-- `js/ow/world.js`: chunk streaming, lights that follow you, water, the air of each place
-- `js/ow/biomes.js`: the four kinds of place and the walls and doorways between them
-- `js/ow/materials.js`: textures (loaded and painted), materials, reflection maps
-- `js/ow/director.js`: tapes, phones, the door, and where and when things appear
-- `js/ow/noise.js`: seeded hashing and random numbers
+- `js/tapes/level.js`: a tape's place: merged geometry by section, lights that follow you, water, platforms, the air of each room
+- `js/tapes/grid.js`: hand-drawn floor plans on a grid, turned into floors, ceilings, walls and doorways
+- `js/tapes/kit.js`: things that move while you aren't looking, things that roll by themselves, triggers
+- `js/tapes/base.js`: what every tape shares: recordings, prompts, objectives, the entities
+- `js/tapes/tape1.js`: Tape 01, its floor plan, props, story and events
+- `js/tapes/materials.js`: textures (loaded and painted) and materials
 - `js/creatures.js`: the Swimmer, the Occupant and the Listener, built from primitives and posed in code
 - `audio/`: sound effects generated with ElevenLabs
 - `models/`: hazmat character generated and rigged with Meshy

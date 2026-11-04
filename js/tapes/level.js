@@ -41,6 +41,7 @@ export class Level {
     this.dynamic = new THREE.Group();
     scene.add(this.dynamic);
     this.spawn = { pos: new THREE.Vector3(...def.spawn.pos), yaw: def.spawn.yaw };
+    this.terrain = def.terrain ?? null;
 
     const tvCanvas = document.createElement('canvas');
     tvCanvas.width = 64;
@@ -120,6 +121,46 @@ export class Level {
         const geo = new THREE.SphereGeometry(rad, 14, 10);
         geo.translate(x, y, z);
         c.add(geo, mat);
+      },
+      // rolling ground, in tiles so far-off parts can be culled
+      ground(x1, x2, z1, z2, mat, tile = 25, res = 1) {
+        for (let tx = x1; tx < x2; tx += tile) {
+          for (let tz = z1; tz < z2; tz += tile) {
+            const w = Math.min(tile, x2 - tx), d = Math.min(tile, z2 - tz);
+            const geo = new THREE.PlaneGeometry(w, d, Math.ceil(w / res), Math.ceil(d / res));
+            geo.rotateX(-Math.PI / 2);
+            geo.translate(tx + w / 2, 0, tz + d / 2);
+            const pos = geo.attributes.position, uv = geo.attributes.uv;
+            for (let i = 0; i < pos.count; i++) {
+              const x = pos.getX(i), z = pos.getZ(i);
+              pos.setY(i, self.terrain ? self.terrain(x, z) : 0);
+              uv.setXY(i, x, -z);
+            }
+            geo.computeVertexNormals();
+            c.add(geo, mat);
+          }
+        }
+      },
+      // tufts of grass, scattered, standing on the ground
+      blades(x1, x2, z1, z2, n, skip = () => false) {
+        const geo = new THREE.PlaneGeometry(0.6, 0.38);
+        geo.translate(0, 0.19, 0);
+        const cross = mergeGeometries([geo, geo.clone().rotateY(Math.PI / 2)]);
+        const inst = new THREE.InstancedMesh(cross, M.blades, n);
+        const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+        let k = 0;
+        for (let i = 0; i < n * 3 && k < n; i++) {
+          const x = x1 + Math.random() * (x2 - x1), z = z1 + Math.random() * (z2 - z1);
+          if (skip(x, z)) continue;
+          const s2 = 0.5 + Math.random() * 0.7;
+          p.set(x, (self.terrain ? self.terrain(x, z) : 0) - 0.02, z);
+          q.setFromAxisAngle(up, Math.random() * Math.PI);
+          sc.set(s2, s2 * (0.55 + Math.random() * 0.6), s2);
+          inst.setMatrixAt(k++, m4.compose(p, q, sc));
+        }
+        inst.count = k;
+        inst.frustumCulled = false;
+        self.dynamic.add(inst);
       },
       // a flat picture on a wall: facing is the direction it looks out ('n','s','e','w')
       plane(x, y, z, w, h, facing, mat, off = 0.01) {
@@ -264,8 +305,8 @@ export class Level {
   // the highest floor under (x, z) that someone standing at height y could be on
   groundAt(x, z, y = 0) {
     // the ground: zero, unless a pool or a sunken room says otherwise
-    let g = null;
-    for (const w of this.waters) if (x >= w.x1 && x <= w.x2 && z >= w.z1 && z <= w.z2) g = Math.max(g ?? -Infinity, w.floor);
+    let g = this.terrain ? this.terrain(x, z) : null;
+    if (g === null) for (const w of this.waters) if (x >= w.x1 && x <= w.x2 && z >= w.z1 && z <= w.z2) g = Math.max(g ?? -Infinity, w.floor);
     for (const b of this.bases) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.y <= y + STEP_UP) g = Math.max(g ?? -Infinity, b.y);
     g ??= 0;
     for (const p of this.platforms) {

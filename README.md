@@ -25,7 +25,7 @@ Four hand-built places, each on its own tape, all on the shelf from the start. E
 
 - **Tape 01: Overtime.** An office at 2:13 am that keeps going past the supply closet: a cubicle farm, a yellow maze, a flooded section, a storage room with no light at all, maintenance tunnels. The elevator needs four fuses. Something tall lives past the closet door: don't stare at it, and don't turn your back on it.
 - **Tape 02: Deep End.** A swim lesson that never ended, in white-tiled halls of water: a lap hall with pillars standing in the deep end, a kiddie pool under cloud wallpaper, a waterslide tunnel, a flooded floor you can only reach underwater, and a diving tower over a pool that keeps getting deeper. Three valves drain it; the way out is at the bottom. The Swimmer only moves while you aren't looking.
-- **Tape 03: Recess.** (not recorded yet) The party is still waiting for you.
+- **Tape 03: Recess.** A birthday party in a pastel field that goes on too far, ringed by hills you never reach. Nobody came. A red balloon leads you to five invitations: at a playground where the swings and the merry-go-round move by themselves, in a house set for guests, under a pink tree, on a pond dock, in a field of freestanding doors (one of them opens onto somewhere else). Then white stairs climb into the clouds to a classroom with your name on a desk. The Guests, tall and in party hats, only move when you aren't looking.
 - **Tape 04: Closing Time.** (not recorded yet) The mall is now closed.
 
 If something catches you, the tape rewinds a few seconds.
@@ -51,7 +51,7 @@ Then open http://localhost:8123.
 - `js/tapes/grid.js`: hand-drawn floor plans on a grid, turned into floors, ceilings, walls and doorways
 - `js/tapes/kit.js`: things that move while you aren't looking, things that roll by themselves, triggers
 - `js/tapes/base.js`: what every tape shares: recordings, prompts, objectives, the entities
-- `js/tapes/tape1.js`, `tape2.js`: each tape's floor plan, props, story and events
+- `js/tapes/tape1.js`, `tape2.js`, `tape3.js`: each tape's floor plan, props, story and events
 - `js/tapes/materials.js`: textures (loaded and painted) and materials
 - `js/creatures.js`: the Swimmer, the Occupant and the Listener, built from primitives and posed in code
 - `audio/`: sound effects generated with ElevenLabs

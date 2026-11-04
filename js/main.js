@@ -320,6 +320,7 @@ function footstep() {
   else if (depth > 0.02) audio.play(pick('puddle_1', 'puddle_2', 'puddle_3'), { pos: feet(), gain: 0.7 * k, send: 0.55, ref: 1.5, rate });
   else if (floor === 'grass') audio.play(pick('grass_1', 'grass_2'), { pos: feet(), gain: 0.55 * k, send: 0.1, ref: 1.5, rate });
   else if (floor === 'concrete') audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.65 * k, send: 0.8, ref: 1.5, rate: rate * 0.9 });
+  else if (floor === 'wood') audio.play(pick('wood_1', 'wood_2'), { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
   else if (floor === 'carpet') audio.play(pick('carpet_1', 'carpet_2'), { pos: feet(), gain: 0.6 * k, send: 0.3, ref: 1.5, rate });
   else audio.play(pick('boot_1', 'boot_2'), { pos: feet(), gain: 0.55 * k, send: 0.7, ref: 1.5, rate });
   director.noise((player.running ? 1 : crouch ? 0.08 : 0.42) * (floor === 'carpet' ? 0.6 : 1), player.pos);

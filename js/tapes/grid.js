@@ -48,8 +48,10 @@ export class Grid {
         while (e + 1 < this.w && this.get(e + 1, r) === ch) e++;
         const s = st(ch);
         // a hair of overlap so neighbouring strips never leave a crack of light between them
-        const o = 0.004;
-        if (s.floor) ctx.box(X(c) - o, X(e + 1) + o, -0.1, 0, Z(r) - o, Z(r + 1) + o, s.floor);
+        const o = 0.004, fy = s.floorY ?? 0;
+        if (s.floor) ctx.box(X(c) - o, X(e + 1) + o, fy - 0.1, fy, Z(r) - o, Z(r + 1) + o, s.floor);
+        // a floor below (or above) ground level is something to stand on
+        if (fy !== 0 && s.floor) ctx.floorAt(X(c), X(e + 1), Z(r), Z(r + 1), fy);
         if (s.ceil) ctx.box(X(c) - o, X(e + 1) + o, s.height, s.height + 0.12, Z(r) - o, Z(r + 1) + o, s.ceil);
         c = e + 1;
       }
@@ -62,7 +64,7 @@ export class Grid {
         if (!this.isWall(this.get(c, r))) { c++; continue; }
         let e = c;
         while (e + 1 < this.w && this.isWall(this.get(e + 1, r))) e++;
-        ctx.collide(X(c), X(e + 1), Z(r), Z(r + 1), -0.2, 8);
+        ctx.collide(X(c), X(e + 1), Z(r), Z(r + 1), -8, 12);
         c = e + 1;
       }
     }
@@ -85,19 +87,21 @@ export class Grid {
             return this.get(cc, rr) === ch && this.isWall(this.get(n2c, n2r));
           };
           while (e + 1 < inner && same(e + 1)) e++;
-          const s = st(ch), h = s.height, t = 0.06;
+          const s = st(ch), h = s.height, t = 0.06, fy = s.floorY ?? 0;
           let x1, x2, z1, z2;
           if (dir === 'n') { x1 = X(b); x2 = X(e + 1); z1 = Z(r) - t; z2 = Z(r); }
           if (dir === 's') { x1 = X(b); x2 = X(e + 1); z1 = Z(r + 1); z2 = Z(r + 1) + t; }
           if (dir === 'w') { z1 = Z(b); z2 = Z(e + 1); x1 = X(c) - t; x2 = X(c); }
           if (dir === 'e') { z1 = Z(b); z2 = Z(e + 1); x1 = X(c + 1); x2 = X(c + 1) + t; }
-          ctx.box(x1, x2, 0, h, z1, z2, s.wall);
+          // a sunken floor (a pool) wears its own tile up to ground level, the room's above it
+          if (s.upper && fy < 0 && h > 0) { ctx.box(x1, x2, fy, 0, z1, z2, s.wall); ctx.box(x1, x2, 0, h, z1, z2, s.upper); }
+          else ctx.box(x1, x2, fy, h, z1, z2, s.wall);
           if (s.base) {
             const o = 0.03;
-            if (dir === 'n') ctx.box(x1, x2, 0, 0.12, z2, z2 + o, s.base);
-            if (dir === 's') ctx.box(x1, x2, 0, 0.12, z1 - o, z1, s.base);
-            if (dir === 'w') ctx.box(x2, x2 + o, 0, 0.12, z1, z2, s.base);
-            if (dir === 'e') ctx.box(x1 - o, x1, 0, 0.12, z1, z2, s.base);
+            if (dir === 'n') ctx.box(x1, x2, fy, fy + 0.12, z2, z2 + o, s.base);
+            if (dir === 's') ctx.box(x1, x2, fy, fy + 0.12, z1 - o, z1, s.base);
+            if (dir === 'w') ctx.box(x2, x2 + o, fy, fy + 0.12, z1, z2, s.base);
+            if (dir === 'e') ctx.box(x1 - o, x1, fy, fy + 0.12, z1, z2, s.base);
           }
           b = e + 1;
         }
@@ -114,11 +118,21 @@ export class Grid {
           const b = this.get(c + dc, r + dr);
           if (this.isWall(b) || a === b) continue;
           const ha = st(a).height, hb = st(b).height;
-          if (Math.abs(ha - hb) < 0.01) continue;
-          const hi = ha > hb ? a : b;
-          const y1 = Math.min(ha, hb), y2 = Math.max(ha, hb);
-          if (dc) ctx.box(X(c + 1) - 0.03, X(c + 1) + 0.03, y1, y2, Z(r), Z(r + 1), st(hi).wall);
-          else ctx.box(X(c), X(c + 1), y1, y2, Z(r + 1) - 0.03, Z(r + 1) + 0.03, st(hi).wall);
+          if (Math.abs(ha - hb) > 0.01) {
+            const hi = ha > hb ? a : b;
+            const y1 = Math.min(ha, hb), y2 = Math.max(ha, hb);
+            const m = st(hi).upper ?? st(hi).wall;
+            if (dc) ctx.box(X(c + 1) - 0.03, X(c + 1) + 0.03, y1, y2, Z(r), Z(r + 1), m);
+            else ctx.box(X(c), X(c + 1), y1, y2, Z(r + 1) - 0.03, Z(r + 1) + 0.03, m);
+          }
+          // and where floors differ (a pool's side, a sunken room), the step down
+          const fa = st(a).floorY ?? 0, fb = st(b).floorY ?? 0;
+          if (Math.abs(fa - fb) > 0.01) {
+            const lo = fa < fb ? a : b;
+            const y1 = Math.min(fa, fb), y2 = Math.max(fa, fb);
+            if (dc) ctx.box(X(c + 1) - 0.03, X(c + 1) + 0.03, y1, y2, Z(r), Z(r + 1), st(lo).wall);
+            else ctx.box(X(c), X(c + 1), y1, y2, Z(r + 1) - 0.03, Z(r + 1) + 0.03, st(lo).wall);
+          }
         }
       }
     }
@@ -127,7 +141,7 @@ export class Grid {
     for (const [c, r] of this.doors) {
       const s = st(this.get(c, r));
       if (s.door === false) continue;
-      const dh = s.doorH ?? 2.2;
+      const dh = (s.floorY ?? 0) + (s.doorH ?? 2.2);
       ctx.box(X(c), X(c + 1), dh, s.height, Z(r), Z(r + 1), s.wall);
     }
 

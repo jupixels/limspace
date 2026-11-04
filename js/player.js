@@ -122,7 +122,8 @@ export class Player {
     for (const d of [0.6, 0.9, 1.2]) {
       const tx = p.x + fx * d, tz = p.z + fz * d;
       const g = this.support(tx, tz);
-      if (g - p.y > STEP && g - p.y < 1.8 && this.surface(tx, tz) === null) {
+      const film = this.surface(tx, tz);
+      if (g - p.y > STEP && g - p.y < 1.8 && (film === null || film - g < 0.3)) {
         this.climb = { t: 0, from: p.clone(), to: new THREE.Vector3(tx, g, tz) };
         this.vel.set(0, 0, 0);
         this.events.push('climb');
@@ -203,6 +204,9 @@ export class Player {
       } else {
         p.y += (ground - p.y) * (1 - Math.exp(-dt * 14));
       }
+      // a ceiling overhead (a flooded tunnel) stops you rising through it
+      const roof = this.world.roofAt?.(p.x, p.z) ?? Infinity;
+      if (p.y + 1.75 > roof) { p.y = roof - 1.75; if (this.vy > 0) this.vy = 0; }
 
       this.eye += ((crouch ? 1.0 : 1.62) - this.eye) * (1 - Math.exp(-dt * 8));
       this.running = run;

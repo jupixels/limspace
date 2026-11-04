@@ -32,6 +32,8 @@ export class Level {
     this.zoneRects = [];
     this.colliders = [];
     this.platforms = [];
+    this.bases = [];
+    this.roofs = [];
     this.waters = [];
     this.anchors = [];
     this.itemList = [];
@@ -136,18 +138,43 @@ export class Level {
       ramp(x1, x2, z1, z2, y0, y1, axis) {
         self.platforms.push({ minX: x1, maxX: x2, minZ: z1, maxZ: z2, y0, y1, axis });
       },
+      // the ground itself, where it isn't at zero: sunken rooms, the bottom of a pool
+      floorAt(x1, x2, z1, z2, y) { self.bases.push({ minX: x1, maxX: x2, minZ: z1, maxZ: z2, y }); },
+      // a ceiling you can't rise through (a flooded tunnel)
+      roof(x1, x2, z1, z2, y) { self.roofs.push({ minX: x1, maxX: x2, minZ: z1, maxZ: z2, y }); },
+      // any four-cornered surface: a sloped pool bottom, a slide
+      quad(a, b, cc, d, mat, facing = [0, 1, 0]) {
+        const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...cc);
+        const n = B.clone().sub(A).cross(C.clone().sub(A));
+        const pts = n.dot(new THREE.Vector3(...facing)) < 0 ? [a, d, cc, b] : [a, b, cc, d];
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(pts.map((p) => [p[0] + p[1] * facing[0], p[2] + p[1] * facing[2]]).flat(), 2));
+        geo.setIndex([0, 1, 2, 0, 2, 3]);
+        geo.computeVertexNormals();
+        c.add(geo, mat);
+      },
       zone(x1, x2, z1, z2, key) { self.zoneRects.push({ x1, x2, z1, z2, key }); },
       light(x, y, z, o = {}) {
         const a = { pos: new THREE.Vector3(x, y, z), color: 0xfff2d8, intensity: 3, distance: 10, ...o, seed: Math.random() * 100, on: o.on ?? true };
         self.anchors.push(a);
         return a;
       },
-      water(x1, x2, z1, z2, surface, floor, deep = false, mat = M.water) {
-        self.waters.push({ x1, x2, z1, z2, surface, floor, deep });
+      water(x1, x2, z1, z2, surface, floor, deep = false, mat = M.water, dynamic = false) {
+        const w = { x1, x2, z1, z2, surface, floor, deep };
+        self.waters.push(w);
         const plane = new THREE.PlaneGeometry(x2 - x1, z2 - z1);
         plane.rotateX(-Math.PI / 2);
-        plane.translate((x1 + x2) / 2, surface, (z1 + z2) / 2);
-        c.add(plane, mat);
+        if (dynamic) {
+          // its own mesh, so the level can fall
+          w.mesh = new THREE.Mesh(plane, mat);
+          w.mesh.position.set((x1 + x2) / 2, surface, (z1 + z2) / 2);
+          self.dynamic.add(w.mesh);
+        } else {
+          plane.translate((x1 + x2) / 2, surface, (z1 + z2) / 2);
+          c.add(plane, mat);
+        }
+        return w;
       },
       decal(x, z, size, color, alpha, y = 0.006) {
         const m = new THREE.Mesh(new THREE.CircleGeometry(size, 16), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: alpha, depthWrite: false }));
@@ -220,13 +247,27 @@ export class Level {
   }
   zone(x, z) { return this.zones[this.zoneAt(x, z)]; }
   floorAt(x, z) { return this.zone(x, z).floor; }
-  waterRect(x, z) { return this.waters.find((w) => x >= w.x1 && x <= w.x2 && z >= w.z1 && z <= w.z2) ?? null; }
+  // a pool that's been drained still has a bottom, but no water
+  waterRect(x, z) { return this.waters.find((w) => w.surface > w.floor + 0.03 && x >= w.x1 && x <= w.x2 && z >= w.z1 && z <= w.z2) ?? null; }
+  setSurface(w, y) {
+    w.surface = y;
+    if (w.mesh) { w.mesh.position.y = y; w.mesh.visible = y > w.floor + 0.03; }
+  }
+  roofAt(x, z) {
+    let r = Infinity;
+    for (const b of this.roofs) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.y < r) r = b.y;
+    return r;
+  }
   waterAt(x, z) { return this.waterRect(x, z)?.surface ?? null; }
   inPool(x, z) { return !!this.waterRect(x, z); }
 
   // the highest floor under (x, z) that someone standing at height y could be on
   groundAt(x, z, y = 0) {
-    let g = this.waterRect(x, z)?.floor ?? 0;
+    // the ground: zero, unless a pool or a sunken room says otherwise
+    let g = null;
+    for (const w of this.waters) if (x >= w.x1 && x <= w.x2 && z >= w.z1 && z <= w.z2) g = Math.max(g ?? -Infinity, w.floor);
+    for (const b of this.bases) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.y <= y + STEP_UP) g = Math.max(g ?? -Infinity, b.y);
+    g ??= 0;
     for (const p of this.platforms) {
       if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
       let h = p.y0;
@@ -319,6 +360,8 @@ export class Level {
 
   async bakeProbes(renderer, compile) {
     this.bakeEnv(renderer);
+    // a tape's own copies of shared materials take their reflections from the original
+    for (const m of Object.values(this.mats ?? {})) if (m.envFrom) m.envMap = m.envFrom.envMap;
     await compile();
   }
 }

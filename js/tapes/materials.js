@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-function canvasTex(w, h, draw, { srgb = true, repeat = true } = {}) {
+export function canvasTex(w, h, draw, { srgb = true, repeat = true } = {}) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -91,7 +91,7 @@ const cloudPaper = () => canvasTex(256, 256, (g, w, h) => {
   }
 });
 
-const signTexture = (text, color) => canvasTex(512, 96, (g, w, h) => {
+export const signTexture = (text, color) => canvasTex(512, 96, (g, w, h) => {
   g.fillStyle = '#0b0b10';
   g.fillRect(0, 0, w, h);
   g.font = 'bold 54px Arial';
@@ -104,7 +104,7 @@ const signTexture = (text, color) => canvasTex(512, 96, (g, w, h) => {
 }, { repeat: false });
 
 // a printed poster, a clock, a screen: small painted things that make an office an office
-const posterTexture = (title, sub, bg, fg) => canvasTex(256, 340, (g, w, h) => {
+export const posterTexture = (title, sub, bg, fg) => canvasTex(256, 340, (g, w, h) => {
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
   const grad = g.createLinearGradient(0, 0, 0, h * 0.7);
@@ -122,7 +122,7 @@ const posterTexture = (title, sub, bg, fg) => canvasTex(256, 340, (g, w, h) => {
   g.fillText(sub, w / 2, h * 0.86);
 }, { repeat: false });
 
-const clockTexture = (hh, mm) => canvasTex(128, 128, (g, w) => {
+export const clockTexture = (hh, mm) => canvasTex(128, 128, (g, w) => {
   const c = w / 2;
   g.fillStyle = '#f4f1e8'; g.beginPath(); g.arc(c, c, 60, 0, 6.283); g.fill();
   g.strokeStyle = '#222'; g.lineWidth = 5; g.stroke();

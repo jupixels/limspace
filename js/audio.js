@@ -10,6 +10,8 @@ const FILES = [
   'house_ambience', 'wood_1', 'wood_2', 'clicks', 'scramble', 'shriek3', 'breaker', 'hiss', 'floor_creak',
   'dead_buttons', 'door_open', 'clock',
   'music_box', 'tape_end', 'splice', 'void_tone',
+  'backrooms_buzz', 'meadow_wind', 'mall_ambience', 'poolrooms_ambience', 'grass_1', 'grass_2', 'memory_chime',
+  'dream_door', 'phone_voice', 'children_far', 'fountain',
 ];
 
 export class AudioSys {

@@ -18,50 +18,62 @@
   </script>
 </head>
 <body>
+  <canvas id="snow" aria-hidden="true"></canvas>
+
   <div id="title" class="overlay">
+    <div class="osd tl"><span class="blink">&#9632;</span> STOP</div>
+    <div class="osd tr">SP <span id="seed">CH 00000</span></div>
+    <div class="osd bl" id="clock">AM 3:14<br>NOV. 03 1999</div>
+    <div class="osd br">TRACKING <span class="track"><i></i><i></i><i></i><i></i><i class="off"></i></span></div>
+
     <div class="panel">
-      <h1>LIMSPACE</h1>
-      <p class="sub" id="tapeTitle">TAPE 01 &mdash; UNLABELED</p>
-      <div id="tapes" class="tapes"></div>
-      <button id="play">&#9654; PLAY TAPE</button>
-      <p id="status" class="hint">headphones recommended</p>
-      <ul class="controls">
-        <li><b>WASD</b> move</li>
-        <li><b>SHIFT</b> run</li>
-        <li><b>SPACE</b> jump / climb</li>
-        <li><b>C</b> crouch</li>
-        <li><b>E</b> interact</li>
-        <li><b>WHEEL</b> zoom</li>
-        <li><b>N</b> night vision</li>
-        <li><b>ESC</b> pause</li>
-      </ul>
-    </div>
-  </div>
-  <div id="pause" class="overlay hidden">
-    <div class="panel" id="pausePanel">
-      <h2>&#10074;&#10074; PAUSE</h2>
-      <div class="settings">
-        <label>LOOK SENSITIVITY <input type="range" id="sens" min="0.3" max="2.5" step="0.05"></label>
-        <label>CAMERA EFFECTS <input type="range" id="fxamt" min="0" max="1.5" step="0.05"></label>
-        <label>VOLUME <input type="range" id="vol" min="0" max="1" step="0.05"></label>
+      <h1 class="logo" data-text="LIMSPACE">LIMSPACE</h1>
+      <p class="tagline">no map. no exit. just keep walking.</p>
+      <nav class="menu">
+        <button id="play"><span class="cur">&#9654;</span>ENTER</button>
+        <button id="newDream"><span class="cur">&#9654;</span>NEW WORLD</button>
+      </nav>
+      <div class="loading">
+        <div class="bar"><i id="bar"></i></div>
+        <p id="status">loading...</p>
       </div>
-      <button id="resume">&#9654; RESUME</button>
+    </div>
+
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
+      <li><kbd>SHIFT</kbd> run</li>
+      <li><kbd>SPACE</kbd> jump</li>
+      <li><kbd>C</kbd> crouch</li>
+      <li><kbd>E</kbd> interact</li>
+      <li><kbd>N</kbd> night vision</li>
+      <li><kbd>WHEEL</kbd> zoom</li>
+      <li><kbd>ESC</kbd> pause</li>
+    </ul>
+    <p class="phones">&#127911; headphones on. lights off.</p>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="osd tl">&#10074;&#10074; PAUSE</div>
+    <div class="panel side" id="pausePanel">
+      <h2>PAUSED</h2>
+      <p class="world" id="pauseWorld">WORLD 00000</p>
+      <div class="found">
+        <div class="row"><span>TAPES FOUND</span><b id="found">0</b></div>
+        <div class="row"><span>LINES HEARD</span><b id="heard">0 / 30</b></div>
+        <div class="segs" id="segs"></div>
+      </div>
+      <div class="settings">
+        <label><span>LOOK SENSITIVITY</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05"></label>
+        <label><span>CAMERA EFFECTS</span><input type="range" id="fxamt" min="0" max="1.5" step="0.05"></label>
+        <label><span>VOLUME</span><input type="range" id="vol" min="0" max="1" step="0.05"></label>
+      </div>
+      <nav class="menu">
+        <button id="resume"><span class="cur">&#9654;</span>RESUME</button>
+        <button id="quit"><span class="cur">&#9654;</span>EJECT</button>
+      </nav>
     </div>
   </div>
-  <div id="end" class="overlay hidden">
-    <div class="panel">
-      <h2 id="endTitle">END OF TAPE 01</h2>
-      <p class="sub" id="endSub">A SECOND TAPE WAS FOUND IN THE WATER</p>
-      <button id="again">&#9654; INSERT TAPE 02</button>
-      <p><button id="back" class="link">&#9664;&#9664; REWIND TAPE 01</button></p>
-      <p id="credits" class="credits hidden">
-        LIMSPACE<br>
-        made with three.js &middot; sound by ElevenLabs &middot; textures from ambientCG (CC0)<br>
-        hazmat suit by Meshy &middot; everything else built in code<br>
-        thank you for watching
-      </p>
-    </div>
-  </div>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

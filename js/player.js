@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { WATER_Y } from './world.js';
 
 const RADIUS = 0.3;
 const BASE_FOV = 72;
@@ -71,8 +70,14 @@ export class Player {
     return Math.max(g(x, z), g(x + r, z), g(x - r, z), g(x, z + r), g(x, z - r));
   }
 
+  // how deep the water is where you stand (0 if there's none)
+  surface(x = this.pos.x, z = this.pos.z) {
+    return this.world.waterAt(x, z);
+  }
+
   get waterDepth() {
-    return this.world.inPool(this.pos.x, this.pos.z) ? WATER_Y - this.pos.y : 0;
+    const s = this.surface();
+    return s === null ? 0 : Math.max(0, s - this.pos.y);
   }
 
   collide() {
@@ -117,7 +122,7 @@ export class Player {
     for (const d of [0.6, 0.9, 1.2]) {
       const tx = p.x + fx * d, tz = p.z + fz * d;
       const g = this.support(tx, tz);
-      if (g - p.y > STEP && g - p.y < 1.8 && !this.world.inPool(tx, tz)) {
+      if (g - p.y > STEP && g - p.y < 1.8 && this.surface(tx, tz) === null) {
         this.climb = { t: 0, from: p.clone(), to: new THREE.Vector3(tx, g, tz) };
         this.vel.set(0, 0, 0);
         this.events.push('climb');
@@ -176,12 +181,13 @@ export class Player {
       const ground = this.support(p.x, p.z);
       if (!this.grounded || p.y - ground > STEP) {
         this.grounded = false;
-        const wasAbove = p.y > WATER_Y - 0.1;
-        const inWater = this.world.inPool(p.x, p.z) && p.y < WATER_Y;
+        const sf = this.surface();
+        const wasAbove = sf === null || p.y > sf - 0.1;
+        const inWater = sf !== null && p.y < sf;
         this.vy -= GRAVITY * (inWater ? 0.35 : 1) * dt;
         if (inWater) this.vy *= Math.exp(-dt * 3);
         p.y += this.vy * dt;
-        if (wasAbove && this.world.inPool(p.x, p.z) && p.y < WATER_Y - 0.1 && this.vy < -2) {
+        if (wasAbove && sf !== null && p.y < sf - 0.1 && this.vy < -2) {
           this.events.push('splash');
           this.dip = Math.min(0.5, -this.vy * 0.08);
         }
@@ -244,5 +250,6 @@ export class Player {
 }
 
 function depthAt(player, y) {
-  return player.world.inPool(player.pos.x, player.pos.z) ? WATER_Y - y : 0;
+  const s = player.surface();
+  return s === null ? 0 : s - y;
 }

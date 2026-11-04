@@ -197,7 +197,30 @@ export class OSD {
       if (!lowBlink) g.fillRect(bx + 3, by + 3, 28 * s.battery / 100, 9);
       this.text('IR', bx - 10, by - 4, 'right', '#d6ffd0');
     }
-    if (s.prompt) this.text(s.prompt, W / 2, H * 0.62, 'center', 'rgba(242,242,242,0.85)');
+    // what's said: a quiet subtitle in the lower third, fading in and out
+    if (s.message && s.messageA > 0) {
+      g.save();
+      g.globalAlpha = Math.max(0, s.messageA);
+      g.font = '30px VT323, monospace';
+      g.letterSpacing = '3px';
+      this.text(s.message, W / 2, H * 0.8, 'center', '#f4f1ea');
+      g.restore();
+    }
+    // what you can do: a key cap and a word, just under the middle of the frame
+    if (s.prompt) {
+      const [, key, word] = s.prompt.match(/^\[(\w+)\]\s*(.*)$/) ?? [null, null, s.prompt];
+      g.font = '24px VT323, monospace';
+      const tw = g.measureText(word).width, kw = 24, gap = 10;
+      const x = W / 2 - (kw + gap + tw) / 2, y = H * 0.6;
+      if (key) {
+        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 2;
+        g.strokeRect(x + 1, y - 1, kw, 26);
+        g.strokeStyle = 'rgba(242,242,242,0.9)';
+        g.strokeRect(x, y - 2, kw, 26);
+        this.text(key, x + kw / 2, y + 1, 'center', '#f2f2f2');
+      }
+      this.text(word, key ? x + kw + gap : W / 2, y + 1, key ? 'left' : 'center', 'rgba(242,242,242,0.9)');
+    }
     this.texture.needsUpdate = true;
   }
 }

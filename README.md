@@ -1,6 +1,6 @@
-﻿# LIMSPACE
+# LIMSPACE
 
-A found-footage liminal-space horror game that runs in the browser. You play back an unlabeled camcorder tape and walk through empty places that should not exist.
+A found-footage liminal-space horror game that runs in the browser. You carry a camcorder through an endless, generated world of empty places that should not exist: backrooms, poolrooms, a pastel meadow, a mall after closing.
 
 **Play:** https://jupixels.github.io/limspace/
 
@@ -19,29 +19,18 @@ A found-footage liminal-space horror game that runs in the browser. You play bac
 
 Headphones recommended.
 
-## Tape 01
+## The world
 
-The hall's only exit is shuttered. Something on the bottom of the pool opens it, and taking it wakes what lives in the water. It only moves while you aren't watching it. If it reaches you, the tape rewinds.
+There is no map, no story and no exit. Every world is generated from a seed (shown on the title screen; **NEW WORLD** rolls another) and streams in around you as you walk, forever, in every direction. It is made of four kinds of place that bleed into each other through doorways:
 
-## Tape 02: Vacancy
+- **The backrooms:** yellow wallpaper, damp carpet and buzzing panel lights, in a maze that never repeats.
+- **The poolrooms:** white tile halls, shallow and deep pools, light from skylights that lead nowhere.
+- **The meadow:** mown grass under a pastel sky, with doors, swing sets, stairs and televisions standing in it.
+- **The mall:** a two-storey shopping arcade after closing: shutters, neon signs, a fountain still running.
 
-https://jupixels.github.io/limspace/?tape=2 (or finish Tape 01)
+Things to find: lost tapes with someone's voice on them, payphones that ring when you come close, and very rarely a door that goes somewhere else. Your found tapes are saved per world.
 
-A hotel corridor that doesn't end. Something tall is standing in it. Don't look at it for long; every time you look away, it comes closer. Keep walking. One of the rooms will open.
-
-## Tape 03: Home
-
-https://jupixels.github.io/limspace/?tape=3 (or finish Tape 02)
-
-A family house at night with the power out, built slightly wrong. The tape is in the VCR. The stairs go up into an attic someone has been filming from. Something blind lives here and it moves toward whatever it hears: walking is noticed, running is heard across the house, crouching is almost silent. The breaker is in the garage, and it is loud.
-
-## Tape 04: Playback
-
-https://jupixels.github.io/limspace/?tape=4 (or finish Tape 03)
-
-The tape replays pieces of the first three, spliced together: a flooded lane with the Swimmer in it, a corridor with the Occupant, a dark room with the Listener by the door. Each splice is a checkpoint. After that, the tape runs out.
-
-Finished tapes unlock on the title screen's tape shelf.
+Each kind of place has something living in it, and it is rare: the Swimmer in deep pools (it moves only when unseen), the Occupant in the backrooms (don't stare, don't turn your back), the Listener in the mall (it hunts by sound; crouch), and something in the meadow that only watches. If one catches you, the tape rewinds a few seconds.
 
 ## Running locally
 
@@ -55,19 +44,16 @@ Then open http://localhost:8123.
 
 ## Structure
 
-- `js/main.js`: renderer, post-processing chain, game loop, pause menu, death/rewind and end-of-tape sequences
-- `js/world.js`: level geometry, area lights, reflection probes, water, inhabitants
+- `js/main.js`: renderer, post-processing chain, game loop, title and pause menus, ambience, catch and rewind
 - `js/player.js`: first-person controller: walking, jumping, wading, climbing, camcorder motion
 - `js/body.js`: the player's visible hazmat-suited body and its animations
 - `js/camcorder.js`: VHS/camcorder shader and viewfinder overlay
 - `js/audio.js`: positional audio, reverb zones
-- `js/events.js`: Tape 01 director: tape pickup, the Swimmer, scripted and random scares
-- `js/hotel.js`: Tape 02 level: the looping corridor, room 215, lights that follow you
-- `js/events2.js`: Tape 02 director: laps, the Occupant's stare meter and steps, the exit
-- `js/house.js`: Tape 03 level: the house, its room graph, lamps, the corner camera feeding the TV
-- `js/events3.js`: Tape 03 director: hearing and hunting, the breaker, the VCR
-- `js/tape4.js`: Tape 04 level: the spliced pieces and the white leader
-- `js/events4.js`: Tape 04 director: the three gauntlets, checkpoints, the ending
+- `js/ow/world.js`: chunk streaming, lights that follow you, water, the air of each place
+- `js/ow/biomes.js`: the four kinds of place and the walls and doorways between them
+- `js/ow/materials.js`: textures (loaded and painted), materials, reflection maps
+- `js/ow/director.js`: tapes, phones, the door, and where and when things appear
+- `js/ow/noise.js`: seeded hashing and random numbers
 - `js/creatures.js`: the Swimmer, the Occupant and the Listener, built from primitives and posed in code
 - `audio/`: sound effects generated with ElevenLabs
 - `models/`: hazmat character generated and rigged with Meshy

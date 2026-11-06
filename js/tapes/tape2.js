@@ -551,7 +551,7 @@ class DeepEnd extends TapeDirector {
   }
 
   pa(name, text) {
-    this.play(name, null, { gain: 1.25, send: 0.95 });
+    this.play(name, null, { gain: 1.25, send: 0.95, radio: true });
     this.say(text, 6);
   }
 

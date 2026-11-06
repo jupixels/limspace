@@ -587,7 +587,7 @@ class Overtime extends TapeDirector {
       world.items().push(this.phoneItem = { type: 'phone', pos: meta.deskPhone, prompt: '[E] answer', reach: 2.2, cos: 0.6, use: (it) => {
         it.done = true;
         this.phoneRing.src.stop();
-        this.play('t1_call', meta.deskPhone, { gain: 1.5, send: 0.2, hrtf: false });
+        this.play('t1_call', meta.deskPhone, { gain: 1.5, send: 0.2, hrtf: false, radio: true });
         this.say('"you\'re still at the office? it\'s late. everyone else went home a long time ago. you should go home too."', 9);
       } });
     });

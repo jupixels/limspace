@@ -167,6 +167,19 @@ export class OSD {
     g.fillText(s, x, y);
   }
 
+  // break a line of text into lines no wider than maxW, in the current font
+  wrap(text, maxW) {
+    const lines = [];
+    let line = '';
+    for (const word of text.split(' ')) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && this.g.measureText(next).width > maxW) { lines.push(line); line = word; }
+      else line = next;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
   draw(s) {
     const g = this.g, W = this.canvas.width, H = this.canvas.height;
     const m = 40;
@@ -204,7 +217,7 @@ export class OSD {
       g.globalAlpha = Math.min(1, (s.t - this.objT) / 0.5, (7 - (s.t - this.objT)) / 1.2);
       g.font = '22px VT323, monospace';
       g.letterSpacing = '2px';
-      this.text('> ' + this.lastObj, m - 8, m + 20, 'left', '#e8e4d8');
+      this.wrap('> ' + this.lastObj, W * 0.6).forEach((l, i) => this.text(l, m - 8, m + 20 + i * 24, 'left', '#e8e4d8'));
       g.restore();
     }
     // what's said: a quiet subtitle in the lower third, fading in and out
@@ -213,7 +226,10 @@ export class OSD {
       g.globalAlpha = Math.max(0, s.messageA);
       g.font = '30px VT323, monospace';
       g.letterSpacing = '3px';
-      this.text(s.message, W / 2, H * 0.8, 'center', '#f4f1ea');
+      // long lines stack upward from a fixed baseline, well inside the frame
+      const lines = this.wrap(s.message, W * 0.72), lh = 33;
+      const top = Math.min(H * 0.8, H * 0.93 - lines.length * lh);
+      lines.forEach((l, i) => this.text(l, W / 2, top + i * lh, 'center', '#f4f1ea'));
       g.restore();
     }
     // what you can do: a key cap and a word, just under the middle of the frame

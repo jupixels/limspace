@@ -637,7 +637,7 @@ class ClosingTime extends TapeDirector {
   }
 
   pa(name, text) {
-    this.play(name, null, { gain: 1.2, send: 0.95 });
+    this.play(name, null, { gain: 1.2, send: 0.95, radio: true });
     this.say(text, 5);
   }
 

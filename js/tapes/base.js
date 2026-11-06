@@ -89,8 +89,8 @@ export class TapeDirector {
     it.led && (it.led.material = this.world.M.panelDead);
     if (it.voice && this.audio.buffers[it.voice]) {
       it.playing?.src.stop();
-      it.playing = this.play(it.voice, it.pos, { gain: 1.6, send: 0.25, ref: 2.5, hrtf: false });
-    } else this.play('phone_voice', it.pos, { gain: 1, ref: 2 });
+      it.playing = this.play(it.voice, it.pos, { gain: 1.6, send: 0.25, ref: 2.5, hrtf: false, radio: true });
+    } else this.play('phone_voice', it.pos, { gain: 1, ref: 2, radio: true });
     this.say(it.text, it.seconds ?? 8);
     this.fx.glitch = Math.max(this.fx.glitch, 0.25);
   }

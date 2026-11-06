@@ -13,6 +13,30 @@ const FILES = [
   'backrooms_buzz', 'grass_1', 'grass_2', 'memory_chime', 'phone_voice',
 ];
 
+// A voice over a small, tired speaker: no lows or highs, a nasal peak, a little overdrive.
+export function radioFilter(ctx) {
+  const filter = (type, frequency, Q = 0.9) => {
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = frequency;
+    f.Q.value = Q;
+    return f;
+  };
+  const high = filter('highpass', 420), high2 = filter('highpass', 420);
+  const low = filter('lowpass', 2900), low2 = filter('lowpass', 2900);
+  const peak = filter('peaking', 1500, 1.1);
+  peak.gain.value = 6;
+  const drive = ctx.createWaveShaper();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh((i / 511.5 - 1) * 2.4);
+  drive.curve = curve;
+  // the second low-pass takes back the highs the overdrive makes; the trim keeps it level with the dry voice
+  const trim = ctx.createGain();
+  trim.gain.value = 0.42;
+  high.connect(high2).connect(low).connect(peak).connect(drive).connect(low2).connect(trim);
+  return { input: high, output: trim };
+}
+
 export class AudioSys {
   async init(onProgress) {
     const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -111,7 +135,23 @@ export class AudioSys {
     const src = this.ctx.createBufferSource();
     src.buffer = this.buffers[name];
     src.playbackRate.value = opts.rate ?? 1;
-    const h = this.chain(src, opts);
+    // a voice on tape or over the PA comes through the radio, with its hiss
+    let head = src;
+    if (opts.radio) {
+      const r = radioFilter(this.ctx);
+      src.connect(r.input);
+      head = r.output;
+      const hiss = this.ctx.createBufferSource();
+      hiss.buffer = this.buffers.tape_hiss;
+      hiss.loop = true;
+      const hissGain = this.ctx.createGain();
+      hissGain.gain.value = 0.7;
+      hiss.connect(hissGain).connect(r.input);
+      hiss.start();
+      src.addEventListener('ended', () => hiss.stop());
+    }
+    const h = this.chain(head, opts);
+    h.src = src;
     src.start(this.ctx.currentTime + (opts.delay ?? 0));
     return h;
   }
